@@ -1,0 +1,88 @@
+---
+title: "main"
+author: "morris"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(spotifyr)
+library(ggplot2)
+
+# move out of src directory to project directory
+parent_dir <- dirname(getwd())
+knitr::opts_knit$set(root.dir=parent_dir)
+```
+
+```{r}
+# load env vars
+readRenviron(".Renviron")
+```
+
+```{r}
+# request data
+alb_elephant <- get_playlist_audio_features("", "1PyDPL0yOSFInNZrCB9fX4")
+alb_moneystore <- get_playlist_audio_features("", "5d1UtUJst5yqIrRrFyy14b")
+alb_madvillain <- get_playlist_audio_features("", "5TtY9ZS9P8HWCFr1AvVx1p")
+```
+
+```{r}
+colnames(alb_madvillain)
+```
+
+```{r}
+# data filter
+process_alb <- function(df) {
+  return (df %>%
+          # select columns 
+           select(danceability, energy, key, loudness, mode, speechiness, acousticness,
+            instrumentalness, liveness, valence, tempo, time_signature,
+            track.duration_ms, track.name, track.popularity, track.album.name, track.track_number,
+            key_name, mode_name, key_mode
+          ) %>%
+          # abbreviate track names
+            mutate(track.short_name = paste(substring(track.name, 0, 10), "...", sep=""))
+  )
+}
+
+# filter data
+alb_elephant_feats <- process_alb(alb_elephant)
+alb_moneystore_feats <- process_alb(alb_moneystore)
+alb_madvillain_feats <- process_alb(alb_madvillain)
+
+all_albs <- rbind(alb_elephant_feats, alb_moneystore_feats, alb_madvillain_feats)
+
+head(alb_elephant_feats)  
+```
+
+
+```{r}
+# plot
+ggplot(alb_elephant_feats, aes(track.short_name, energy, fill="red")) +
+  theme(axis.text.x = element_text(angle=90, vjust=0.5, hjust=1)) +
+  labs(title="Energy levels for tracks on 'Elephant' by The White Stripes") +
+  geom_col()
+
+```
+
+
+
+
+
+```{r}
+ggplot(all_albs, aes(tempo, energy, col=track.album.name, size=track.popularity)) +
+  labs(title="Energy vs. Tempo") +
+  geom_point()
+
+```
+
+
+
+
+
+
+
+
+
+
