@@ -14,12 +14,17 @@ Because the lyrical vocabulaire is extremely rich, a large, diverse dataset is o
 
 A list of albums per genre that make up the corpus (for now):
 
-Pop: 
-
+*Pop*: 
 Midnights (Taylor Swift); WHEN WE ALL FALL ASLEEP, WHERE DO WE GO? (Billie Eilish); Dua Lipa (Dua Lipa)
-
  
-
-Hip Hop:
-
+*Hip Hop*:
 Madvillainy (MF DOOM, Madlib); ASTROWORLD (Travis Scott); HEROES & VILLAINS (Metro Boomin)
+
+*Alternative Rock*:
+Elephant (The White Stripes); ..Like Clockwork (Queens of the Stone Age); Street Worms (Viagra Boys)
+
+*Industrial hip hop*:
+The Money Store (Death Grips); OFFLINE! (JPEGMAFIA); Visions of Bodies Being Burned (clipping.)
+
+*Classical (translated to english)*:
+Wilhelmus (Marnix Van St. Aldegonde), Negende symfonie (Beethoven)
