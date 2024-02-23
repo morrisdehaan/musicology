@@ -1,0 +1,123 @@
+---
+title: "Story Time!"
+author: "morris"
+date: "`r Sys.Date()`"
+output:
+  flexdashboard::flex_dashboard:
+    storyboard: true
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(tidyverse)
+library(spotifyr)
+library(ggplot2)
+
+# load env vars
+readRenviron(".Renviron")
+```
+
+```{r}
+# load data
+alb_elephant <- get_playlist_audio_features("", "1PyDPL0yOSFInNZrCB9fX4")
+alb_moneystore <- get_playlist_audio_features("", "5d1UtUJst5yqIrRrFyy14b")
+alb_madvillain <- get_playlist_audio_features("", "5TtY9ZS9P8HWCFr1AvVx1p")
+```
+
+```{r}
+# data filter
+process_alb <- function(df) {
+  return (df %>%
+          # select columns 
+           select(danceability, energy, key, loudness, mode, speechiness, acousticness,
+            instrumentalness, liveness, valence, tempo, time_signature,
+            track.duration_ms, track.name, track.popularity, track.album.name, track.track_number,
+            key_name, mode_name, key_mode
+          ) %>%
+          # abbreviate track names
+            mutate(track.short_name = paste(substring(track.name, 0, 10), "...", sep=""))
+  )
+}
+
+# filter data
+alb_elephant_feats <- process_alb(alb_elephant)
+alb_moneystore_feats <- process_alb(alb_moneystore)
+alb_madvillain_feats <- process_alb(alb_madvillain)
+
+all_albs <- rbind(alb_elephant_feats, alb_moneystore_feats, alb_madvillain_feats)
+```
+
+### Introduction
+
+This period I would like to investigate how song lyrics correlate with music properties such as modality, energy levels and dynamic pitch range across different genres. More specifically, the research focuses on relating the words contained by the lyrics to musical properties. I find it highly interesting to see how the mood and emotionality of a song/genre affect a sing and songwriter when writing the lyrics. I expect some obvious results, such that hip hop is generally more about the ‘hood’ than rock music, and perhaps that songs in a minor mode deal with sad topics more frequently than major mode songs. 
+
+ 
+
+Because the lyrical vocabulaire is extremely rich, a large, diverse dataset is of the essence. To accomplish this and to keep the corpus representative, I will put together a corpus that draws inspiration from a broad range of genres. This includes mainstream genres such as pop music, but also more obscure ones such as industrial hip hop, as unexpected yet interesting patterns may emerge. I will dissect the word usage for each genre and then compare word usages of different genres. It would be interesting to know if genres with similar lyrics have similar properties.
+
+ 
+
+A list of albums per genre that make up the corpus (for now):
+
+*Pop*: 
+Midnights (Taylor Swift); WHEN WE ALL FALL ASLEEP, WHERE DO WE GO? (Billie Eilish); Dua Lipa (Dua Lipa)
+ 
+*Hip Hop*:
+Madvillainy (MF DOOM, Madlib); ASTROWORLD (Travis Scott); HEROES & VILLAINS (Metro Boomin)
+
+*Alternative Rock*:
+Elephant (The White Stripes); ..Like Clockwork (Queens of the Stone Age); Street Worms (Viagra Boys)
+
+*Industrial hip hop*:
+The Money Store (Death Grips); OFFLINE! (JPEGMAFIA); Visions of Bodies Being Burned (clipping.)
+
+*Classical (translated to english)*:
+Wilhelmus (Marnix Van St. Aldegonde), Negende symfonie (Beethoven)
+
+
+### Comparison of tracks within an album
+
+```{r}
+# plot
+ggplot(alb_elephant_feats, aes(track.short_name, energy, fill="red")) +
+  theme(axis.text.x = element_text(angle=90, vjust=0.5, hjust=1)) +
+  labs(title="Energy levels for tracks on 'Elephant' by The White Stripes") +
+  geom_col()
+```
+
+***
+
+Before we shall discover inter-album relations, let us commit to a single album,
+such that we can shape an idea what the variation within an album might look 
+like.
+
+
+### Comparison of different albums
+
+```{r}
+ggplot(all_albs, aes(tempo, energy, col=track.album.name, size=track.popularity)) +
+  labs(title="Energy vs. Tempo") +
+  geom_point()
+```
+
+***
+
+Intuitively, tempo and energy are correlating factors of a song. We imagine
+high energy songs generally have a fast tempo. Let us investigate this
+thought by plotting the data for number of albums. As you can see, some
+albums tend to be limited in their energy range, whilst others are
+more or less contained.
+
+### Conclusion
+
+What is there not to say. We live in a data driven society that harbors
+as many music tastes as there are colors in a van Gogh painting. But just
+like a van Gogh painting, you can dissect it and scrutinize the most 
+elementary aspects, from its radiance to its perspective on the cruelties and
+absurdities of society. We looked at energy levels, at tempo, a variety
+of tracks and albums, from a point of view of strict objectiveness, one
+that our primordial ancestors would not even be able to fathom. One could
+draw an infinite number of conclusions, some might jump out more than others.
+What is a data driven society without conclusions?
+
+
