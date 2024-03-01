@@ -12,25 +12,55 @@ library(flexdashboard)
 library(tidyverse)
 library(spotifyr)
 library(ggplot2)
+library(compmus)
+library(jsonlite)
+library(dplyr)
 
 # load env vars
 readRenviron(".Renviron")
 ```
 
-```{r}
+```{r, include=FALSE}
+#! request lyrics from Musixmatch
+
+LYRICS_APIKEY <- Sys.getenv("MUSIXMATCH_APIKEY")
+
+LYRICS_URL <- sprintf("https://api.musixmatch.com/ws/1.1/matcher.lyrics.get?
+q_track=%s&q_artist=%s&apikey=%s", "%s", "%s", LYRICS_APIKEY)
+LYRICS_URL <- gsub("\n", "", LYRICS_URL)
+
+# TODO: store lyrics in json file
+#' retrieves the lyrics of track from artists
+get_lyrics <- function(track, artists) {
+  # there may be no spaces in the URL
+  track <- gsub(" ", "%20", track)
+  artists <- gsub(" ", "%20", artists)
+  
+  data <- jsonlite::fromJSON(sprintf(LYRICS_URL, track, artists))
+  lyrics <- data$message$body$lyrics$lyrics_body
+  # remove warning at the end
+  lyrics <- gsub(
+    "\n...\n\n\\*{7} This Lyrics is NOT for Commercial use \\*{7}",
+    "", lyrics
+  )
+  return(lyrics)
+}
+```
+
+```{r, include=FALSE}
 # load data
 alb_elephant <- get_playlist_audio_features("", "1PyDPL0yOSFInNZrCB9fX4")
 alb_moneystore <- get_playlist_audio_features("", "5d1UtUJst5yqIrRrFyy14b")
 alb_madvillain <- get_playlist_audio_features("", "5TtY9ZS9P8HWCFr1AvVx1p")
 ```
 
-```{r}
+```{r, include=FALSE}
 # data filter
 process_alb <- function(df) {
   return (df %>%
           # select columns 
            select(danceability, energy, key, loudness, mode, speechiness, acousticness,
-            instrumentalness, liveness, valence, tempo, time_signature,
+            instrumentalness, liveness, valence, tempo, time_signature, track.artists,
             track.duration_ms, track.name, track.popularity, track.album.name, track.track_number,
             key_name, mode_name, key_mode
           ) %>%
@@ -45,6 +75,44 @@ alb_moneystore_feats <- process_alb(alb_moneystore)
 alb_madvillain_feats <- process_alb(alb_madvillain)
 
 all_albs <- rbind(alb_elephant_feats, alb_moneystore_feats, alb_madvillain_feats)
+```
+
+```{r, include=FALSE}
+#! fetch lyrics
+
+LYRICS_FILE <- "res/lyrics.json"
+
+# load stored lyrics
+if (!file.exists(LYRICS_FILE)) {
+  lyrics_db <- data.frame(
+    track=character(), artists=character(),
+    album=character(), lyrics=character()
+  )
+} else {
+  lyrics_db <- jsonlite::fromJSON(LYRICS_FILE)
+}
+
+# load all lyrics
+by(all_albs, seq_len(nrow(all_albs)), function(row) {
+  if (!(row$track.name %in% lyrics_db$track)) {
+    track <- row$track.name
+    # concatenate artist names
+    artists <- paste(row$track.artists[[1]]$name, collapse=", ")
+    # fetch lyrics
+    lyrics <- get_lyrics(track, artists)
+    
+    # store lyrics  
+    lyrics_db <<- lyrics_db %>% add_row(
+      track=track, album=row$track.album.name, artists=artists,
+      lyrics=lyrics
+    )
+  }
+})
+
+# store lyrics
+write(jsonlite::toJSON(lyrics_db, pretty=TRUE), LYRICS_FILE)
+
+head(lyrics_db)
 ```
 
 ### Introduction
@@ -75,6 +143,133 @@ The Money Store (Death Grips); OFFLINE! (JPEGMAFIA); Visions of Bodies Being Bur
 Wilhelmus (Marnix Van St. Aldegonde), Negende symfonie (Beethoven)
 
 
+### Analysis of an odd one out
+```{r, include=FALSE}
+
+sna_analysis <- get_tidy_audio_analysis("3dPQuX8Gs42Y7b454ybpMR")
+
+sna_bar <- sna_analysis %>%
+  compmus_align(bars, segments) %>%
+  select(bars) %>%
+  unnest(bars) %>%
+  mutate(pitches=map(segments, compmus_summarise, pitches,
+        method="rms", norm="euclidean"
+  )) %>%
+  mutate(timbre=map(segments, compmus_summarise, timbre,
+        method="rms", norm="euclidean"
+  ))
+
+sna_beat <- sna_analysis %>%
+  compmus_align(beats, segments) %>%
+  select(beats) %>%
+  unnest(beats) %>%
+  mutate(pitches=map(segments, compmus_summarise, pitches,
+        method="rms", norm="euclidean"
+  )) %>%
+  mutate(timbre=map(segments, compmus_summarise, timbre,
+        method="rms", norm="euclidean"
+  ))
+
+```
+
+```{r}
+sna_beat %>%
+  compmus_gather_timbre() |>
+  ggplot(aes(
+      start + duration/2, basis,
+      width=duration,
+      fill=value
+  )) +
+  geom_tile() +
+  labs(x="time (s)", y=NULL, fill="magnitude") +
+  scale_fill_viridis_c() +                              
+  theme_minimal()
+```
+
+***
+In order for us to broaden our understanding of the entire dataset, it can
+be useful zoom in and investigate a single track. Let us investigate not
+any song, but one of the most iconic out of the entire dataset: Seven Nation
+Army.
+To the side, you will find a cepstrogram, with a level of detail per beat. As 
+you can see, the timbre varies between two of the timbre properties. After
+listening to the song this makes sense: the electric guitar amplifier
+settings change between the chorus and verse. Though, the image is a bit
+noisy, so let's investigate a more granular time division.
+
+### Analysis of an odd one out, a bit less specific
+
+```{r}
+sna_bar %>%
+  compmus_gather_timbre() |>
+  ggplot(aes(
+      start + duration/2, basis,
+      width=duration,
+      fill=value
+  )) +
+  geom_tile() +
+  labs(x="time (s)", y=NULL, fill="magnitude") +
+  scale_fill_viridis_c() +                              
+  theme_minimal()
+```
+
+***
+Now the time division is per bar. This gives a clearer image and it
+emphasizes our conclusion.
+
+### Song structure analysis
+
+```{r}
+sna_bar %>%
+  compmus_self_similarity(timbre, "cosine") %>%
+  ggplot(aes(
+      xstart + xduration/2,
+      ystart + yduration/2,
+      width=xduration,
+      height=yduration,
+      fill=d
+  )) +
+  geom_tile() +
+  coord_fixed() +
+  scale_fill_viridis_c(guide="none") +
+  theme_minimal() +
+  labs(x="", y="")
+```
+
+***
+Let us try to delve deeper into our hypothesis that the different
+timbres are caused by differences in chorus and verse.
+To accomplish this, we will generate a self-similarity
+matrix for timbre and pitch.
+Here you see the self-similarity matrix of seven nation army for timbre.
+Our conclusion is made even stronger, it seems the timbre is split into
+a two parts, possibly.
+
+### Song structure analysis
+
+```{r}
+sna_bar %>%
+  compmus_self_similarity(pitches, "cosine") %>%
+  ggplot(aes(
+      xstart + xduration/2,
+      ystart + yduration/2,
+      width=xduration,
+      height=yduration,
+      fill=d
+  )) +
+  geom_tile() +
+  coord_fixed() +
+  scale_fill_viridis_c(guide="none") +
+  theme_minimal() +
+  labs(x="", y="")
+```
+
+***
+To be certain here I present the pitch self-similarity matrix also.
+This also strongens our evidence that the song is split into two parts,
+we can now say this with full certainty.
+The blocky pattern can be explained by the chord changes.
+
 ### Comparison of tracks within an album
 
 ```{r}
@@ -101,6 +296,8 @@ ggplot(all_albs, aes(tempo, energy, col=track.album.name, size=track.popularity)
 ```
 
 ***
+
+### Self-similarity
 
 Intuitively, tempo and energy are correlating factors of a song. We imagine
 high energy songs generally have a fast tempo. Let us investigate this
