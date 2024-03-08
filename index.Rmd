@@ -7,6 +7,14 @@ output:
     storyboard: true
 ---
 
+```{r, include=FALSE}
+# Idea: how happy is major? compare words for different key modes
+# Idea: what is the most thought provoking key?
+# Idea: do frequent modulations mean different lyrics?
+#   (compute modulation score per track)
+# Idea: how does timbre or number of sections influence lyrics
+```
+
 ```{r setup, include=FALSE}
 library(flexdashboard)
 library(tidyverse)
@@ -15,6 +23,7 @@ library(ggplot2)
 library(compmus)
 library(jsonlite)
 library(dplyr)
+library(cowplot)
 
 # load env vars
 readRenviron(".Renviron")
@@ -78,6 +87,24 @@ all_albs <- rbind(alb_elephant_feats, alb_moneystore_feats, alb_madvillain_feats
 ```
 
 ```{r, include=FALSE}
+#! some useful shared functionality
+
+# TODO: why no work?
+# returns the spectrogram of the given track
+make_spectrogram <- function(track_analysis, segmentation, method="mean", norm="manhattan") {
+  track_analysis %>%
+    compmus_align(segmentation, segments) %>%
+    select(segmentation) %>%
+    unnest(segmentation) %>%
+    mutate(pitches=map(
+        segments, compmus_summarize, pitches,
+        method=method, norm=norm
+    ))
+}
+
+```
+
+```{r, include=FALSE}
 #! fetch lyrics
 
 LYRICS_FILE <- "res/lyrics.json"
@@ -114,6 +141,123 @@ write(jsonlite::toJSON(lyrics_db, pretty=TRUE), LYRICS_FILE)
 
 head(lyrics_db)
 ```
+### Key analysis
+
+```{r}
+#! generate chord templates
+
+shift_template <- function(temp, n) {
+  if (n == 0) temp
+  else c(tail(temp, n), head(temp, -n))
+}
+
+keys <- c("C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B")
+mode_templates <- list(
+  # TODO: where are these from?
+  maj=c(6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88),
+  min=c(6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17)
+)
+
+key_templates <- list()
+for (key_idx in seq_along(keys)) {
+  for (mode in names(mode_templates)) {
+    chord_name <- sprintf("%s:%s", keys[key_idx], mode)
+    template <- shift_template(mode_templates[[mode]], key_idx-1)
+    
+    key_templates[[chord_name]] <- template
+  }
+}
+
+key_templates <- tibble(name=names(key_templates), template=key_templates)
+```
+
+```{r, include=FALSE}
+# smooth sailing
+ss_analysis <- get_tidy_audio_analysis("5fb0p81SAZBkZEvmLAfGKz") %>%
+  compmus_align(sections, segments) %>%
+    select(sections) %>%
+    unnest(sections) %>%
+    mutate(pitches=map(
+        segments, compmus_summarize, pitches,
+        method="mean", norm="manhattan"
+    ))
+```
+
+```{r, include=FALSE}
+# measure how well each key matches for each section
+ss_keys <- ss_analysis %>%
+  compmus_match_pitch_template(
+    key_templates,
+    method="chebyshev",
+    norm="manhattan"
+  ) %>%
+  mutate(d = 1 - d)
+
+# find the changes
+# TODO
+```
+
+```{r, include=FALSE}
+ss_keys %>%
+  group_by(start) %>%
+  top_n(n=3, wt=d)
+```
+
+```{r}
+color_palette <- "mako" # "cividis" is fun also
+
+ss_keygram_plot <- ss_keys %>%
+  ggplot(aes(start + duration/2, name, width=duration, fill=d)) +
+  geom_tile() +
+  scale_fill_viridis_c(option=color_palette, guide="none") +
+  theme_bw() +
+  labs(x="time (s)", y="", title="Key matching for Smooth Sailing") +
+  geom_vline(xintercept=130, colour = "purple") +
+  geom_vline(xintercept=215, colour = "yellow")
+
+
+ss_loudness_plot <- ss_analysis %>%
+  ggplot(aes(start + duration/2, loudness)) +
+  geom_line() +
+  theme_bw() +
+  labs(x="time (s)", y="loudness (db)", title="Loudness for Smooth Sailing") +
+  geom_vline(xintercept=130, colour = "purple") +
+  geom_vline(xintercept=215, colour = "yellow")
+
+plot_grid(ss_keygram_plot, ss_loudness_plot)
+
+```
+
+***
+
+Let's analyze keys. To accomplish this, we will match the pitch classes
+we expect to hear in a key, with the actually played pitch classes.
+Let's do this for an archetypal catchy rock tune: Smooth Sailing, from
+the Queens of the Stone Age. When we do this for all minor and major keys,
+we end up with the first plot. The brighter the tile, the more prevalent
+the key on the y-axis is. You will notice that at two points, near
+135 and 215 seconds, many different keys are matched at once. When we
+look at the loudness plot these points coincide with the peaks in loudness.
+This makes sense: these points in the songs are mostly pitch-class-less noise.
+
+
+### Keys histogram
+
+```{r}
+all_albs %>%
+  ggplot(aes(key_name, fill=mode_name)) +
+  geom_dotplot() +
+  labs(title="Key occurences in data set", x="Key", y="Occurences", fill="Mode")
+
+all_albs
+```
+
+***
+
+Here we see which keys occur how many times in the data set. Funilly, we
+some keys seem to be chiefly minor, like B and E, and some major, like G or D.
+This could be a limitation of the Spotify API, namely that it confuses
+relative minor and minor keys, like E minor and G major.
 
 ### Introduction
 
@@ -163,10 +307,10 @@ sna_beat <- sna_analysis %>%
   compmus_align(beats, segments) %>%
   select(beats) %>%
   unnest(beats) %>%
-  mutate(pitches=map(segments, compmus_summarise, pitches,
+  mutate(pitches=map(segments, compmus_summarize, pitches,
         method="rms", norm="euclidean"
   )) %>%
-  mutate(timbre=map(segments, compmus_summarise, timbre,
+  mutate(timbre=map(segments, compmus_summarize, timbre,
         method="rms", norm="euclidean"
   ))
 
