@@ -248,8 +248,6 @@ all_albs %>%
   ggplot(aes(key_name, fill=mode_name)) +
   geom_dotplot() +
   labs(title="Key occurences in data set", x="Key", y="Occurences", fill="Mode")
-
-all_albs
 ```
 
 ***
