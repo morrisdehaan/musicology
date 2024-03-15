@@ -141,6 +141,48 @@ write(jsonlite::toJSON(lyrics_db, pretty=TRUE), LYRICS_FILE)
 
 head(lyrics_db)
 ```
+
+### Tempo analysis
+
+```{r, echo=FALSE}
+
+# great day from MF DOOM
+gd_analysis <- get_tidy_audio_analysis("2teH8BAM9q2oSmBre5hiQM")
+```
+
+```{r, echo=FALSE}
+
+color_palette <- "mako" # "cividis" is fun also
+
+literal_tempo <- gd_analysis %>%
+  tempogram(window_size = 8, hop_size = 1, cyclic = FALSE) %>%
+  ggplot(aes(x = time, y = bpm, fill = power)) +
+  geom_raster() +
+  scale_fill_viridis_c(option=color_palette, guide="none") +
+  labs(title="Literal tempo", x = "Time (s)", y = "Tempo (BPM)") +
+  theme_bw()
+
+perceived_tempo <- gd_analysis %>%
+  tempogram(window_size = 8, hop_size = 1, cyclic = TRUE) %>%
+  ggplot(aes(x = time, y = bpm, fill = power)) +
+  geom_raster() +
+  scale_fill_viridis_c(option=color_palette, guide="none") +
+  labs(title="Perceived tempo", x = "Time (s)", y = "Tempo (BPM)") +
+  theme_bw()
+
+plot_grid(literal_tempo, perceived_tempo, nrow=2)
+```
+
+***
+
+For the tempo analysis I picked the song Great Day from MF DOOM, because on face value it seems like an outlier.
+Great Day, as many other tracks on the Madvillainy, uses samples in such a way that the beat sounds
+a bit wonky. I wonder if this makes it hard for the algorithm to track the beat. However, it's still easy to tap along the beat at around 81bpm.
+The analyses confirm the wonkiness suspicion: both the measured and perceived
+tempo plots are impossible to make sense of. It's interesting how a beat can be easy for
+a human to tap along, but almost impossible for a (near) state of the art algorithm
+to figure out.
+
 ### Key analysis
 
 ```{r}
