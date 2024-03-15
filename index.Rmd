@@ -1,0 +1,155 @@
+---
+title: "portfolio"
+author: "morris"
+date: "`r Sys.Date()`"
+output:
+  flexdashboard::flex_dashboard:
+    storyboard: true
+---
+
+```{r, include=FALSE}
+library(flexdashboard)
+library(tidyverse)
+library(spotifyr)
+library(ggplot2)
+library(compmus)
+library(jsonlite)
+library(dplyr)
+
+# load environment variables
+readRenviron(".Renviron")
+```
+
+```{r, include=FALSE}
+#! fetch data
+
+corpus_raw <- get_playlist_audio_features("", "1H9BY5uJqk2CWtPo4Ogi2w")
+```
+
+```{r, include=FALSE}
+#! preprocess data
+
+corpus <- corpus_raw %>% select(
+  energy, valence, track.popularity, track.artists, track.name
+)
+```
+
+```{r lyrics, include=FALSE}
+#! load lyrics
+
+LYRICS_DIR <- "./res"
+LYRICS_FILE <- "./res/lyrics.json"
+LYRICS_APIKEY <- Sys.getenv("MUSIXMATCH_APIKEY")
+LYRICS_URL <- sprintf(paste(
+  "https://api.musixmatch.com/ws/1.1/matcher.lyrics.get?",
+  "q_track=%s&q_artist=%s&apikey=%s", sep=""),
+  "%s", "%s", LYRICS_APIKEY
+)
+
+# fetches the lyrics of a track from some artists from Musixmatch
+get_lyrics <- function(track, artists) {
+  # there may be no spaces in the URL
+  track <- gsub(" ", "%20", track)
+  artists <- gsub(" ", "%20", artists)
+  
+  data <- jsonlite::fromJSON(sprintf(LYRICS_URL, track, artists))
+  lyrics <- data$message$body$lyrics$lyrics_body
+  # remove warning at the end
+  lyrics <- gsub(
+    "\n...\n\n\\*{7} This Lyrics is NOT for Commercial use \\*{7}.*",
+    "", lyrics
+  )
+  return(lyrics)
+}
+
+# load stored lyrics
+if (!file.exists(LYRICS_FILE)) {
+  lyrics_db <- data.frame(
+    track=character(), artists=character(),
+    album=character(), lyrics=character()
+  )
+  
+  dir.create(LYRICS_DIR)
+} else {
+  # fetch all previously cached lyrics
+  lyrics_db <- jsonlite::fromJSON(LYRICS_FILE)
+}
+
+by(corpus, seq_len(nrow(corpus)), function(row) {
+  # check if lyrics are already loaded
+  if (!(row$track.name %in% lyrics_db$track)) {
+    track <- row$track.name
+    # concatenate artist names
+    artists <- paste(row$track.artists[[1]]$name, collapse=", ")
+    # fetch lyrics
+    lyrics <- get_lyrics(track, artists)
+    
+    # store lyrics
+    lyrics_db <<- lyrics_db %>% add_row(
+      track=track, artists=artists,
+      lyrics=lyrics
+    )
+  }
+})
+
+# cache lyrics
+write(jsonlite::toJSON(lyrics_db, pretty=TRUE), LYRICS_FILE)
+
+# compute sentiments
+system("python3 lyrics.py")
+```
+
+```{r sentiment}
+#! add lyrical sentiment values to corpus
+
+lyrics_db <- jsonlite::fromJSON(LYRICS_FILE)
+
+# corpus$lyrics_sentiment <- lyrics_db$sentiment
+nrows(corpus)
+```
+
+### Rhythm
+
+### Introduction
+
+How do music vibes relate to the lyrics? It is tempting to think that music tries to convey some feeling or emotion, and that both the music and lyrics are there to support this message. Let me give you an example. We might expect a song with a slow beat and laid back guitar to talk about laid back topics, maybe a trip to the beach. At the other end of the spectrum, heavy metal would likely concern itself with darker, heavier subjects. However, are these suspicions even true? Let’s put some numbers to the hypothesis that there in fact is a relationship between music and lyrics. In the next sections I’ll take you through a journey where we approach this topic through a scientific lens, harnessing all the powers that modern technology has to offer along the way.
+
+Before we delve any deeper, we should define which specific areas we will be researching.
+
+Because it’s hard to objectively define such a subjective subject as ‘vibes’, we will restrict the ‘vibes’ to be studied to three distinct ‘vibes’: *happy*, *sad*, and *neutral*. Though per song these classifications probably will differ per person to some degree, generally in western culture there is consensus as to what they mean. Of course, there are many more nuanced emotions, but
+they are a lot more subjective.
+
+Furthermore, if we roughly break down music into four main elements, we get *instrumentation*, *melody*, *harmony* and *rhythm*. We will investigate each separately, and in the end combined.
+
+Let us dive into it!
+
+### Corpus
+
+Before we go, we still need to settle on a body of music to let our analyses loose upon. To avoid lyrical variation between genres, and to reasonably limit the scope of this project, we will stick to the pop genre only. That is, the top-100 songs of the last decade.
+
+Using the API that `Musixmatch` offers, I’ll load the lyrics from all tracks in the corpus. Then using the `NLTK` package, which offers natural language processing functionalities, the lyrics for each track are assigned a ‘semantic’ score, i.e. *positive*, *negative*, or *neutral*. We use this as an indicator if the text is more on the 'happy' or 'sad' end of the spectrum.
+In the next sections we'll be analyzing the corpus musically using the `Spotify` API, and
+comparing it to the lyrical analysis.
+
+### Discovery
+
+***
+
+The `Spotify` API offers functionalities that range from very high to very low level. Here we will use some the the high level analyses
+to learn about the corpus.
+
+```{r}
+ggplot(corpus, aes(valence, energy, size=track.popularity)) +
+  labs(title="Energy vs. Valence", x="Valence", y="Energy") +
+  geom_point()
+```
+
+
+### Note!
+
+I'm redesigning my entire project to fit my research question, as I'm
+getting the hang of all the R functionalities.
+This means I'm currently retailoring all previous homework assignments!
+
+
+
