@@ -1,13 +1,18 @@
 ---
 title: "portfolio"
-author: "morris"
+author: "Morris de Haan"
 date: "`r Sys.Date()`"
 output:
   flexdashboard::flex_dashboard:
     storyboard: true
+    
+    css: style.css
+    theme:
+      version: 4
+      bootswatch: darkly
 ---
 
-```{r, include=FALSE}
+```{r setup, include=FALSE}
 library(flexdashboard)
 library(tidyverse)
 library(spotifyr)
@@ -15,27 +20,33 @@ library(ggplot2)
 library(compmus)
 library(jsonlite)
 library(dplyr)
+library(plotly)
 
 # load environment variables
 readRenviron(".Renviron")
+
+custom_theme <- theme(text=element_text(family="Montserrat"))
 ```
 
-```{r, include=FALSE}
+```{r load_corpus, include=FALSE}
 #! fetch data
 
 corpus_raw <- get_playlist_audio_features("", "1H9BY5uJqk2CWtPo4Ogi2w")
 ```
 
-```{r, include=FALSE}
+```{r preprocess_corpus, include=FALSE}
 #! preprocess data
 
 corpus <- corpus_raw %>% select(
-  energy, valence, track.popularity, track.artists, track.name
+  energy, valence, popularity=track.popularity, artists=track.artists, track=track.name
 )
+
+# concatenate artist names into single string
+corpus$artists <- unlist(map(corpus$artists, function(r) paste(r$name, collapse=", ")))
 ```
 
-```{r lyrics, include=FALSE}
-#! load lyrics
+```{r fetch_lyrics, include=FALSE}
+#! load lyrics, delete entries from corpus whose lyrics cannot be fetched
 
 LYRICS_DIR <- "./res"
 LYRICS_FILE <- "./res/lyrics.json"
@@ -75,40 +86,41 @@ if (!file.exists(LYRICS_FILE)) {
   lyrics_db <- jsonlite::fromJSON(LYRICS_FILE)
 }
 
-by(corpus, seq_len(nrow(corpus)), function(row) {
+for (i in 1:nrow(corpus)) {
+  row <- corpus[i,]
+  
   # check if lyrics are already loaded
-  if (!(row$track.name %in% lyrics_db$track)) {
-    track <- row$track.name
-    # concatenate artist names
-    artists <- paste(row$track.artists[[1]]$name, collapse=", ")
+  if (!(row$track %in% lyrics_db$track)) {
     # fetch lyrics
-    lyrics <- get_lyrics(track, artists)
+    lyrics <- get_lyrics(row$track, row$artists)
+    if (length(lyrics) == 0)
+      lyrics <- NA
     
     # store lyrics
     lyrics_db <<- lyrics_db %>% add_row(
-      track=track, artists=artists,
+      track=row$track, artists=row$artists,
       lyrics=lyrics
     )
   }
-})
+}
 
 # cache lyrics
 write(jsonlite::toJSON(lyrics_db, pretty=TRUE), LYRICS_FILE)
+```
+
+```{r compute_sentiment, include=FALSE}
+#! add lyrical sentiment values to corpus, delete tracks from corpus
+#!  that have no available lyrics
 
 # compute sentiments
 system("python3 lyrics.py")
+
+lyrics_db <- jsonlite::fromJSON(LYRICS_FILE)[c("track", "sentiment")]
+
+corpus <- merge(corpus, lyrics_db, by="track") %>%
+  rename(lyrical_sentiment=sentiment) %>%
+  drop_na(lyrical_sentiment)
 ```
-
-```{r sentiment}
-#! add lyrical sentiment values to corpus
-
-lyrics_db <- jsonlite::fromJSON(LYRICS_FILE)
-
-# corpus$lyrics_sentiment <- lyrics_db$sentiment
-nrows(corpus)
-```
-
-### Rhythm
 
 ### Introduction
 
@@ -119,7 +131,7 @@ Before we delve any deeper, we should define which specific areas we will be res
 Because it’s hard to objectively define such a subjective subject as ‘vibes’, we will restrict the ‘vibes’ to be studied to three distinct ‘vibes’: *happy*, *sad*, and *neutral*. Though per song these classifications probably will differ per person to some degree, generally in western culture there is consensus as to what they mean. Of course, there are many more nuanced emotions, but
 they are a lot more subjective.
 
-Furthermore, if we roughly break down music into four main elements, we get *instrumentation*, *melody*, *harmony* and *rhythm*. We will investigate each separately, and in the end combined.
+Furthermore, if we roughly break down music into four main elements, we get *melody*, *harmony*, *instrumentation* and *rhythm*. We will investigate each separately, and in the end combined.
 
 Let us dive into it!
 
@@ -133,17 +145,29 @@ comparing it to the lyrical analysis.
 
 ### Discovery
 
+```{r}
+# TODO: where did the popularity legend go??
+ggplotly(
+  ggplot(corpus, aes(valence, energy, col=lyrical_sentiment, size=popularity, text=paste(track, "by", artists))) +
+  labs(title="Energy vs. Valence", x="Valence", y="Energy", col="Lyrical valence", size="Popularity") +
+  geom_point() +
+  geom_rug(linewidth=0.2) +
+  custom_theme
+)
+```
+
 ***
 
 The `Spotify` API offers functionalities that range from very high to very low level. Here we will use some the the high level analyses
 to learn about the corpus.
 
-```{r}
-ggplot(corpus, aes(valence, energy, size=track.popularity)) +
-  labs(title="Energy vs. Valence", x="Valence", y="Energy") +
-  geom_point()
-```
+### Melody
 
+### Harmony
+
+### Instrumentation
+
+### Rhythm
 
 ### Note!
 
