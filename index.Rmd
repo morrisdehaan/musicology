@@ -1,5 +1,5 @@
 ---
-title: "portfolio"
+title: "Portfolio"
 author: "Morris de Haan"
 date: "`r Sys.Date()`"
 output:
@@ -9,7 +9,7 @@ output:
     css: style.css
     theme:
       version: 4
-      bootswatch: darkly
+      bootswatch: cerulean
 ---
 
 ```{r setup, include=FALSE}
@@ -21,31 +21,42 @@ library(compmus)
 library(jsonlite)
 library(dplyr)
 library(plotly)
+library(cowplot)
+library(showtext)
 
 # load environment variables
 readRenviron(".Renviron")
 
+font_add_google("Montserrat") # TODO: necessary (from showtext)?
 custom_theme <- theme(text=element_text(family="Montserrat"))
 ```
 
-```{r load_corpus, include=FALSE}
+```{r load corpus, include=FALSE}
 #! fetch data
 
 corpus_raw <- get_playlist_audio_features("", "1H9BY5uJqk2CWtPo4Ogi2w")
 ```
 
-```{r preprocess_corpus, include=FALSE}
+```{r preprocess corpus, include=FALSE}
 #! preprocess data
 
 corpus <- corpus_raw %>% select(
-  energy, valence, popularity=track.popularity, artists=track.artists, track=track.name
+  loudness, mode, valence, key,
+  popularity=track.popularity, artists=track.artists, track=track.name
 )
+
+# key index --> key name
+keys <- c("C", "C#|Db", "D", "D#|Eb", "E", "F", "F#|Gb", "G", "G#|Ab",  "A", "A#|Bb", "B")
+corpus$key <- unlist(map(corpus$key, function(idx) if (idx == -1) "Unknown" else keys[idx+1]))
+
+# mode index --> mode name
+corpus$mode <- unlist(map(corpus$mode, function(idx) if (idx == 1) "Major" else "Minor"))
 
 # concatenate artist names into single string
 corpus$artists <- unlist(map(corpus$artists, function(r) paste(r$name, collapse=", ")))
 ```
 
-```{r fetch_lyrics, include=FALSE}
+```{r fetch lyrics, include=FALSE}
 #! load lyrics, delete entries from corpus whose lyrics cannot be fetched
 
 LYRICS_DIR <- "./res"
@@ -108,7 +119,7 @@ for (i in 1:nrow(corpus)) {
 write(jsonlite::toJSON(lyrics_db, pretty=TRUE), LYRICS_FILE)
 ```
 
-```{r compute_sentiment, include=FALSE}
+```{r compute sentiment, include=FALSE}
 #! add lyrical sentiment values to corpus, delete tracks from corpus
 #!  that have no available lyrics
 
@@ -124,34 +135,52 @@ corpus <- merge(corpus, lyrics_db, by="track") %>%
 
 ### Introduction
 
-How do music vibes relate to the lyrics? It is tempting to think that music tries to convey some feeling or emotion, and that both the music and lyrics are there to support this message. Let me give you an example. We might expect a song with a slow beat and laid back guitar to talk about laid back topics, maybe a trip to the beach. At the other end of the spectrum, heavy metal would likely concern itself with darker, heavier subjects. However, are these suspicions even true? Let’s put some numbers to the hypothesis that there in fact is a relationship between music and lyrics. In the next sections I’ll take you through a journey where we approach this topic through a scientific lens, harnessing all the powers that modern technology has to offer along the way.
+How does music relate to the lyrics? It is tempting to think that a song tries to convey some feeling or emotion, and that both the music and lyrics are there to support this message. Let me give you an example. We might expect a song with a slow beat and laid back guitar to talk about laid back topics, maybe a trip to the beach. At the other end of the spectrum, heavy metal would likely concern itself with darker, heavier subjects. However, are these suspicions even true? Let’s put some numbers to the hypothesis that there in fact is a relationship between music and lyrics. In the next sections I’ll take you through a journey where we approach this topic with a statistical mindset, harnessing all the powers that modern technology has to offer along the way.
 
-Before we delve any deeper, we should define which specific areas we will be researching.
+We'll start out with picking a large body of music and for each track in there, we are going to collect and store the lyrics. It would be way too cumbersome to scrape all the lyrics from the internet myself, but fortunately the [`Musixmatch`](https://www.musixmatch.com/) API
+allows querying lyrics from code in a single API call. For an unpaid account only 30% of the lyrics for a queried track is returned, but that will do for our intents and purposes. I assign every set of lyrics a sentimental, or valency, score automatically using the 
+[`NLTK`](https://www.nltk.org/) package, which offers natural language processing functionalities. A low score indicates a *sad* feeling, whereas a high score a *happy* feeling. When the lyrics have a numerical score we can start to answer our question: how does music relate to lyrics?
 
-Because it’s hard to objectively define such a subjective subject as ‘vibes’, we will restrict the ‘vibes’ to be studied to three distinct ‘vibes’: *happy*, *sad*, and *neutral*. Though per song these classifications probably will differ per person to some degree, generally in western culture there is consensus as to what they mean. Of course, there are many more nuanced emotions, but
-they are a lot more subjective.
-
-Furthermore, if we roughly break down music into four main elements, we get *melody*, *harmony*, *instrumentation* and *rhythm*. We will investigate each separately, and in the end combined.
+The research question is still a bit broad. We settled on how to analyze lyrics, but not yet on which aspects on music we'll focus.
+We are going to keep the research broad, and explore how the lyrics relate to the four main elements of music, that is *melody*, *harmony*, *instrumentation* and *rhythm*. To access and preprocess the music properties the [`Spotify`](https://developer.spotify.com/documentation/web-api) API is used. We will investigate each separately, and in the end combined.
 
 Let us dive into it!
 
 ### Corpus
 
-Before we go, we still need to settle on a body of music to let our analyses loose upon. To avoid lyrical variation between genres, and to reasonably limit the scope of this project, we will stick to the pop genre only. That is, the top-100 songs of the last decade.
+The first order of business is choosing the corpus of music. We have chosen a broad research question and the corpus should
+reflect this. It must draw inspiration from various genres and contain a large number of songs, only then can we
+justify general conclusions. Because the heavy lifting in terms of fetching the data we need is done by the `Musixmatch` and `Spotify` APIs,
+this is most certainly possible.
 
-Using the API that `Musixmatch` offers, I’ll load the lyrics from all tracks in the corpus. Then using the `NLTK` package, which offers natural language processing functionalities, the lyrics for each track are assigned a ‘semantic’ score, i.e. *positive*, *negative*, or *neutral*. We use this as an indicator if the text is more on the 'happy' or 'sad' end of the spectrum.
-In the next sections we'll be analyzing the corpus musically using the `Spotify` API, and
-comparing it to the lyrical analysis.
+The exhaustive list of albums that are included in this research:
+
+<span style="color:blue">
+Elephant, Madvillainy, ..Like Clockwork, Street Worms, Midnights,
+HEROES & VILLAINS, St. Elsewhere, The White Album, Plastic Beach,
+Demon Days, Thriller, In the Aeroplane Over the Sea, Hawaii: Part ||,
+WHEN WE ALL FALL ASLEEP, WHERE DO WE GO?, Dua Lipa, The Money Store, OFFLINE!,
+OK Computer and Rumours
+</span>
+
+This totals over **280** tracks and **16** hours of listening time.
+
+***
+
+**Playlist**
+
+<iframe src="https://open.spotify.com/embed/playlist/1H9BY5uJqk2CWtPo4Ogi2w?utm_source=generator" width="100%" height="380" frameBorder="0" allowfullscreen="" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"></iframe>
 
 ### Discovery
 
-```{r}
+```{r discovery}
 # TODO: where did the popularity legend go??
 ggplotly(
-  ggplot(corpus, aes(valence, energy, col=lyrical_sentiment, size=popularity, text=paste(track, "by", artists))) +
-  labs(title="Energy vs. Valence", x="Valence", y="Energy", col="Lyrical valence", size="Popularity") +
+  ggplot(corpus, aes(valence, lyrical_sentiment, col=loudness, size=popularity, text=paste(track, "by", artists))) +
   geom_point() +
+  geom_smooth(inherit.aes=FALSE, aes(valence, lyrical_sentiment)) +
   geom_rug(linewidth=0.2) +
+  labs(title="Musical vs. Lyrical Valence", x="Musical valence", y="Lyrical Valence", col="Loudness (Decibels)", size="Popularity") +
   custom_theme
 )
 ```
@@ -159,11 +188,185 @@ ggplotly(
 ***
 
 The `Spotify` API offers functionalities that range from very high to very low level. Here we will use some the the high level analyses
-to learn about the corpus.
+like valence and energy to learn about the corpus.
+
+When we plot energy, musical and lyrical valence values against each other we find something enormously interesting.
+Clearly, even though energy and valence do not seem related, musical and lyrical valence appear highly correlated.
 
 ### Melody
 
+```{r melody}
+get_audio_analysis <- function(uri) {
+  get_tidy_audio_analysis(uri) %>%
+    select(segments) %>%
+    unnest(segments) %>%
+    select(start, duration, pitches)
+}
+
+get_chromogram <- function(analysis, title) {
+  analysis %>%
+    mutate(pitches=map(pitches, compmus_normalize, "euclidean")) %>%
+    compmus_gather_chroma() %>%
+    ggplot(aes(start + duration*0.5, pitch_class, width=duration, fill=value)) +
+    geom_tile() +
+    labs(title=title, x="Time (seconds)", y=NULL, fill="Magnitude") +
+    # TODO: part of custom theme?
+    scale_fill_viridis_c(option="mako", guide="none") +
+    theme_minimal() +
+    custom_theme
+}
+
+# Ball and Biscuit by the white stripes
+happy_analysis <- get_audio_analysis("0O2SYh5AZ0y8MAPOVC4Mxz")
+# The Illest Villains by Madvillain
+sad_analysis <- get_audio_analysis("2Jn0wHQ2lEif2gLRsyfaf2")
+
+happy_entry <- (corpus %>% filter(track == "Ball and Biscuit"))
+sad_entry <- (corpus %>% filter(track == "The Illest Villains"))
+
+# TODO: fix background
+plot_grid(
+  get_chromogram(happy_analysis,
+    sprintf("%s chromogram (lyrical valency = %s)", happy_entry$track,
+      format(happy_entry$lyrical_sentiment, digits=2)
+  )),
+  get_chromogram(sad_analysis,
+    sprintf("%s chromogram (lyrical valency = %s)", sad_entry$track,
+      format(sad_entry$lyrical_sentiment, digits=2)
+  )),
+  nrow=2
+)
+```
+
+***
+
+Intuitively, it would appear that melody encodes a lot of the valency information of a song. The melody is usually the most
+memorable part and often indicative of the feel of a song. So it makes sense to look at the melody of two tracks, one with low and one
+with high lyrical valence. A visualization tool that makes sense to use, is a chromogram. This captures for each moment the notes that
+are played, as analyzed using the fourier transform. Let's try this and see if any melody lines become apparent.
+
+Unfortunately, looking at the chromograms, no discernible melody is recognizable. The only thing that sticks out is the droning 'E' in Ball and Biscuit, but this could hardly be called a melody. It appears we need a different tool.
+
+### Melody: What is the happiest key?
+
+```{r per key lyrical valence, message=FALSE}
+# TODO: optimize
+per_key_valences <- rbind(
+  # add average per key
+  corpus %>%
+    mutate(mode="Either") %>%
+    group_by(key, mode) %>%
+    summarize(avg_sentiment = mean(lyrical_sentiment), count = n()),
+  corpus %>%
+    group_by(key, mode) %>%
+    summarize(avg_sentiment = mean(lyrical_sentiment), count = n()),
+  # add average for all keys
+  corpus %>%
+    mutate(key="Mean\nof all\nkeys", mode="Either") %>%
+    group_by(key, mode) %>%
+    summarize(avg_sentiment = mean(lyrical_sentiment), count = n()),
+  corpus %>%
+    mutate(key="Mean\nof all\nkeys") %>%
+    group_by(key, mode) %>%
+    summarize(avg_sentiment = mean(lyrical_sentiment), count = n())
+)
+
+# get the max number of samples for any key
+col_scale_end <- max((per_key_valences %>% filter(key != "Mean\nof all\nkeys"))$count)
+
+# TODO: add error bar or smth or communicate number of tracks per key/mode
+# TODO: fix legend
+bar_plot <- per_key_valences %>%
+  ggplot(aes(key, avg_sentiment, fill=mode, col=count)) +
+  geom_col(position=position_dodge(width=0.75)) +
+  geom_vline(xintercept=12.5, linetype="dotted", col="black") +
+  labs(title="Mean lyrical valence per key, for either, the major and the minor mode", x="Key", y="Mean lyrical valence") +
+  scale_fill_manual(values=c("Either"="gray", "Major"="lightblue", "Minor"="navy")) +
+  scale_color_viridis_c(option="rocket", limits=c(0, col_scale_end)) +
+  custom_theme
+
+ggplotly(bar_plot)
+```
+
+***
+
+Though finding specific melodies is a difficult task to automatize, we could look at the key in which the melody is played.
+
 ### Harmony
+
+```{r generate chord templates, include=FALSE}
+#! generate chord templates
+
+shift_template <- function(temp, n) {
+  if (n == 0) temp
+  else c(tail(temp, n), head(temp, -n))
+}
+
+keys <- c("C", "C#|Db", "D", "D#|Eb", "E", "F", "F#|Gb", "G", "G#|Ab",  "A", "A#|Bb", "B")
+mode_templates <- list(
+  # TODO: where are these from?
+  maj=c(6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88),
+  min=c(6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17)
+)
+
+key_templates <- list()
+for (key_idx in seq_along(keys)) {
+  for (mode in names(mode_templates)) {
+    chord_name <- sprintf("%s:%s", keys[key_idx], mode)
+    template <- shift_template(mode_templates[[mode]], key_idx-1)
+    
+    key_templates[[chord_name]] <- template
+  }
+}
+
+key_templates <- tibble(name=names(key_templates), template=key_templates)
+```
+
+```{r harmony, message=FALSE}
+# TODO: use my god is the sun somewhere
+# TODO: use some nice facet wrap somewhere
+# TODO: get Montserrat to work with compmus plots
+
+# TODO: pick any fun song, no good reason required
+get_key_match_plot <- function(uri, title) {
+  key_analysis <- get_tidy_audio_analysis(uri) %>%
+    compmus_align(sections, segments) %>%
+      select(sections) %>%
+      unnest(sections) %>%
+      mutate(pitches=map(
+          segments, compmus_summarize, pitches,
+          method="rms", norm="euclidean"
+      ))
+  
+  key_matching <- key_analysis %>%
+    compmus_match_pitch_template(
+      key_templates,
+      method="euclidean",
+      norm="euclidean"
+    ) %>%
+    # invert colors
+    mutate(d = 1 - d)
+  
+  key_matching %>%
+    ggplot(aes(start + duration/2, name, width=duration, fill=d)) +
+    geom_tile() +
+    scale_fill_viridis_c(option="mako", guide="none") +
+    labs(x="Time (seconds)", y="", title=title) +
+    theme_minimal() +
+    custom_theme
+}
+
+plot_grid(
+  get_key_match_plot("0gTRROuntlrPQ64W3J2Etv", "Key matching for\nElectioneering"),
+  get_key_match_plot("5dZ8PeKKZJLIQAWNTdp8WX", "Key matching for\nRevolution 9")
+)
+```
+
+***
+
+The troubles with key matching.
+
+### Harmony: Modulations
 
 ### Instrumentation
 
