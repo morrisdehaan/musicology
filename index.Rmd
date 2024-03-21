@@ -23,12 +23,15 @@ library(dplyr)
 library(plotly)
 library(cowplot)
 library(showtext)
+library(tm)
+library(wordcloud2)
+library(patchwork)
 
 # load environment variables
 readRenviron(".Renviron")
 
-font_add_google("Montserrat") # TODO: necessary (from showtext)?
-custom_theme <- theme(text=element_text(family="Montserrat"))
+portfolio_font <- "Times New Roman"
+custom_theme <- theme(text=element_text(family=portfolio_font))
 ```
 
 ```{r load corpus, include=FALSE}
@@ -41,19 +44,22 @@ corpus_raw <- get_playlist_audio_features("", "1H9BY5uJqk2CWtPo4Ogi2w")
 #! preprocess data
 
 corpus <- corpus_raw %>% select(
-  loudness, mode, valence, key,
+  loudness, mode, tempo, valence, key,
   popularity=track.popularity, artists=track.artists, track=track.name
 )
 
 # key index --> key name
-keys <- c("C", "C#|Db", "D", "D#|Eb", "E", "F", "F#|Gb", "G", "G#|Ab",  "A", "A#|Bb", "B")
-corpus$key <- unlist(map(corpus$key, function(idx) if (idx == -1) "Unknown" else keys[idx+1]))
+pretty_keys <- c("C", "C♯|D♭", "D", "D♯|E♭", "E", "F", "F♯|G♭", "G", "G♯|A♭",  "A", "A♯|B♭", "B")
+ugly_keys <- c("C", "C#|Db", "D", "D#|Eb", "E", "F", "F#|Gb", "G", "G#|Ab", "A", "A#|Bb", "B")
+corpus$key <- unlist(map(corpus$key, function(idx) if (idx == -1) "Unknown" else pretty_keys[idx+1]))
 
 # mode index --> mode name
 corpus$mode <- unlist(map(corpus$mode, function(idx) if (idx == 1) "Major" else "Minor"))
 
 # concatenate artist names into single string
 corpus$artists <- unlist(map(corpus$artists, function(r) paste(r$name, collapse=", ")))
+
+# TODO: tempo to perceived tempo?
 ```
 
 ```{r fetch lyrics, include=FALSE}
@@ -108,7 +114,7 @@ for (i in 1:nrow(corpus)) {
       lyrics <- NA
     
     # store lyrics
-    lyrics_db <<- lyrics_db %>% add_row(
+    lyrics_db <- lyrics_db %>% add_row(
       track=row$track, artists=row$artists,
       lyrics=lyrics
     )
@@ -142,7 +148,8 @@ allows querying lyrics from code in a single API call. For an unpaid account onl
 [`NLTK`](https://www.nltk.org/) package, which offers natural language processing functionalities. A low score indicates a *sad* feeling, whereas a high score a *happy* feeling. When the lyrics have a numerical score we can start to answer our question: how does music relate to lyrics?
 
 The research question is still a bit broad. We settled on how to analyze lyrics, but not yet on which aspects on music we'll focus.
-We are going to keep the research broad, and explore how the lyrics relate to the four main elements of music, that is *melody*, *harmony*, *instrumentation* and *rhythm*. To access and preprocess the music properties the [`Spotify`](https://developer.spotify.com/documentation/web-api) API is used. We will investigate each separately, and in the end combined.
+We are going to keep the research broad, and explore how the lyrics relate to the four main elements of music, that is *melody*, *harmony*, *instrumentation* and *rhythm*. To access and preprocess the music properties the [`Spotify`](https://developer.spotify.com/documentation/web-api) API is used. For each element we will either confirm or refute
+any hypotheses that intuitively make a lot of sense, but are not (yet) backed up by data.
 
 Let us dive into it!
 
@@ -290,7 +297,7 @@ ggplotly(bar_plot)
 
 ***
 
-Though finding specific melodies is a difficult task to automatize, we could look at the key in which the melody is played.
+Though finding specific melodies is a difficult task to automize, we could look at the key in which the melody is played.
 
 ### Harmony
 
@@ -302,7 +309,6 @@ shift_template <- function(temp, n) {
   else c(tail(temp, n), head(temp, -n))
 }
 
-keys <- c("C", "C#|Db", "D", "D#|Eb", "E", "F", "F#|Gb", "G", "G#|Ab",  "A", "A#|Bb", "B")
 mode_templates <- list(
   # TODO: where are these from?
   maj=c(6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88),
@@ -310,9 +316,9 @@ mode_templates <- list(
 )
 
 key_templates <- list()
-for (key_idx in seq_along(keys)) {
+for (key_idx in seq_along(ugly_keys)) {
   for (mode in names(mode_templates)) {
-    chord_name <- sprintf("%s:%s", keys[key_idx], mode)
+    chord_name <- sprintf("%s:%s", ugly_keys[key_idx], mode)
     template <- shift_template(mode_templates[[mode]], key_idx-1)
     
     key_templates[[chord_name]] <- template
@@ -325,7 +331,6 @@ key_templates <- tibble(name=names(key_templates), template=key_templates)
 ```{r harmony, message=FALSE}
 # TODO: use my god is the sun somewhere
 # TODO: use some nice facet wrap somewhere
-# TODO: get Montserrat to work with compmus plots
 
 # TODO: pick any fun song, no good reason required
 get_key_match_plot <- function(uri, title) {
@@ -357,7 +362,8 @@ get_key_match_plot <- function(uri, title) {
 }
 
 plot_grid(
-  get_key_match_plot("0gTRROuntlrPQ64W3J2Etv", "Key matching for\nElectioneering"),
+  get_key_match_plot("0gTRROuntlrPQ64W3J2Etv", "Key matching for\nElectioneering")
+,
   get_key_match_plot("5dZ8PeKKZJLIQAWNTdp8WX", "Key matching for\nRevolution 9")
 )
 ```
@@ -366,17 +372,124 @@ plot_grid(
 
 The troubles with key matching.
 
-### Harmony: Modulations
-
 ### Instrumentation
+
+```{r}
+# TODO: have pretty keynames everywhere
+# TODO: timbre self-similarity
+
+# TODO: timbre options are: self-similarity, timbre components
+
+```
 
 ### Rhythm
 
-### Note!
+```{r word cloud, warning=FALSE}
 
-I'm redesigning my entire project to fit my research question, as I'm
-getting the hang of all the R functionalities.
-This means I'm currently retailoring all previous homework assignments!
+# NOTE: for an annoying reason one 1 word cloud can be displayed
 
+# TODO: random gradient in color
+
+# TODO: faceted word cloud, 1 plot for low tempo, 1 for high tempo, also include some lyrical valency analysis
+
+GROUP_COUNT <- 80
+MIN_FREQ <- 0.0015
+
+median_tempo <- median(corpus$tempo)
+
+# load all words
+lyrics_db <- jsonlite::fromJSON(LYRICS_FILE)[c("track", "lyrics")]
+rownames(lyrics_db) <- lyrics_db$track
+
+# lyrics of all the slow songs
+slow_lyrics <- c()
+# lyrics of all the fast songs
+fast_lyrics <- c()
+
+# gather lyrics
+for (i in 1:nrow(corpus)) {
+    row <- corpus[i,]
+    lyrics <- lyrics_db[row$track,]$lyrics
+    
+    if (row$tempo < median_tempo) {
+      slow_lyrics <- c(slow_lyrics, lyrics)
+    } else {
+      fast_lyrics <- c(fast_lyrics, lyrics)
+    }
+}
+
+clean_text <- function(txt) {
+  all_lyrics <- Corpus(VectorSource(txt))
+  
+  # clean text
+  all_lyrics <- all_lyrics %>%
+    tm_map(removeNumbers) %>%
+    tm_map(removePunctuation) %>%
+    tm_map(stripWhitespace) %>%
+    tm_map(content_transformer(tolower)) %>%
+    tm_map(removeWords, stopwords("english"))
+  
+  matrix <- as.matrix(TermDocumentMatrix(all_lyrics))
+  words <- sort(rowSums(matrix), decreasing=TRUE)
+  # get relative frequencies
+  word_freqs <- data.frame(word=names(words), freq=words / sum(words))
+    return(word_freqs)
+}
+
+# clean lyrics
+slow_word_freqs <- clean_text(paste(slow_lyrics, collapse=" "))
+fast_word_freqs <- clean_text(paste(fast_lyrics, collapse=" "))
+
+# TODO: have top 50 of either category in there
+# TODO: mention relative frequency somewhere
+normalize <- function(x) (x - min(x)) / (max(x) - min(x))
+
+# compute differences in frequencies
+all_words <- merge(slow_word_freqs, fast_word_freqs, by="word", suffixes=c("_slow", "_fast"))
+all_words$freq_slow <- normalize(pmax(all_words$freq_slow - all_words$freq_fast, 0))
+all_words$freq_fast <- normalize(pmax(all_words$freq_fast - all_words$freq_slow, 0))
+
+word_freqs <- rbind(
+  all_words[c("word", "freq_slow")] %>%
+    rename(freq=freq_slow) %>%
+    arrange(desc(freq)) %>%
+    head(n=GROUP_COUNT) %>%
+    mutate(col = "red"),
+
+  all_words[c("word", "freq_fast")] %>%
+    rename(freq=freq_fast) %>%
+    arrange(desc(freq)) %>%
+    head(n=GROUP_COUNT) %>%
+    mutate(col = "skyblue")
+) %>% filter(freq >= MIN_FREQ)
+
+word_freqs %>%
+  wordcloud2(
+    fontFamily=portfolio_font, shuffle=FALSE,
+    color=word_freqs$col, size=1.0, widgetsize=c(750, 750)
+  )
+
+```
+
+***
+
+*Hypothesis: higher tempo songs tend to be more aggressive and slower songs more sensual.*
+
+Let's put this one to the test. For this hypothesis we'll denote songs that have a lower BPM than the median (< `r median_tempo`BPM) as slow songs, and the rest songs as fast songs (≥ `r median_tempo`BPM).
+
+So far we've explored only the lyrical valency property, but not the lyrics themselves. We might gain some
+new insights if we look at the lyrics directly, so let's try it. One of the most useful tools for visualizing
+patterns in textual data is a so called `word cloud`, which you can see to the side. 
+The words in <span style="color:skyblue">blue</span> refer to words that occur very frequently in
+fast songs relative to slow songs, and vice versa for the <span style="color:red">red</span> words.
+
+Immediately we can see instances that prove the hypothesis. Slow song words include sensual words such as *number* (as in, someones phone number), *kiss*, *boy* and *hot*. These are words we would expect to encounter in a love song. Though what stands out is that 
+*love* is included in the fast songs. There are also some odd ones out like *bones*.
+As for the fast tracks we also find what one would expect, e.g. aggressive words like *kill*, *gun* and *ill*. Also, very noticeably, we find numerous verbs and filler words. This makes sense in a track where the singer (or rapper) has to keep up the pace in a high BPM track, and it's easiest for the listener and artist to reuse many of the common verbs and filler words to keep the information stream somewhat limited.
+
+Most of the data in this plot seems to **confirm** the hypothesis (though there are exceptions, like *love* among the fast tracks).
+
+
+### Conclusion
 
 
