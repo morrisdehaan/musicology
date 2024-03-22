@@ -25,13 +25,20 @@ library(cowplot)
 library(showtext)
 library(tm)
 library(wordcloud2)
-library(patchwork)
+library(patchwork) # TODO: necessary?
+library(caret)
+library(recipes)
+library(tidymodels)
+library(doParallel)
+library(vip)
 
 # load environment variables
 readRenviron(".Renviron")
 
 portfolio_font <- "Times New Roman"
 custom_theme <- theme(text=element_text(family=portfolio_font))
+
+RUN_XGBOOST_TUNING = TRUE # TODO: remove
 ```
 
 ```{r load corpus, include=FALSE}
@@ -44,7 +51,7 @@ corpus_raw <- get_playlist_audio_features("", "1H9BY5uJqk2CWtPo4Ogi2w")
 #! preprocess data
 
 corpus <- corpus_raw %>% select(
-  loudness, mode, tempo, valence, key,
+  acousticness, danceability, energy, instrumentalness, loudness, mode, tempo, valence, key,
   popularity=track.popularity, artists=track.artists, track=track.name
 )
 
@@ -194,7 +201,7 @@ ggplotly(
 
 ***
 
-The `Spotify` API offers functionalities that range from very high to very low level. Here we will use some the the high level analyses
+The `Spotify` API offers a plethora of functionalities that range from very high to very low level. Here we will use some the the high level analyses
 like valence and energy to learn about the corpus.
 
 When we plot energy, musical and lyrical valence values against each other we find something enormously interesting.
@@ -247,14 +254,17 @@ plot_grid(
 
 ***
 
-Intuitively, it would appear that melody encodes a lot of the valency information of a song. The melody is usually the most
+*Research: can we identify melodies from audio data?*
+
+Intuitively, it seems that melody encodes a lot of the valency information of a song. The melody is usually the most
 memorable part and often indicative of the feel of a song. So it makes sense to look at the melody of two tracks, one with low and one
-with high lyrical valence. A visualization tool that makes sense to use, is a chromogram. This captures for each moment the notes that
-are played, as analyzed using the fourier transform. Let's try this and see if any melody lines become apparent.
+with high lyrical valence, and investigate how melody correlates with lyrical valence. A sensible visualization tool to use is a chromogram. This captures for each moment the notes that are played, as analyzed using the fourier transform. Let's try this and see if any melody lines become apparent.
 
 Unfortunately, looking at the chromograms, no discernible melody is recognizable. The only thing that sticks out is the droning 'E' in Ball and Biscuit, but this could hardly be called a melody. It appears we need a different tool.
 
-### Melody: What is the happiest key?
+TODO: explain what melody the human ear hears, and that it's not detected
+
+### Melody/Harmony
 
 ```{r per key lyrical valence, message=FALSE}
 # TODO: optimize
@@ -297,9 +307,20 @@ ggplotly(bar_plot)
 
 ***
 
-Though finding specific melodies is a difficult task to automize, we could look at the key in which the melody is played.
+*Research: what is the saddest key?*
 
-### Harmony
+Apparently it's difficult to find melodies when faced with a chromogram. Instead of identifying specific melody lines, we could
+focus on the key in which the melody is played. Luckily `Spotify` gives us the key and mode of every track in our corpus, so
+we don't have to compute this ourselves. When we plot the lyrical valency for each key, where the band around the bars represents
+the number of tracks that have that specific key, we get the bar plot to the side. What meets the eye, is a huge spike
+at the D sharp (or E flat) key. What could this mean? Unfortunately not a lot, because upon closer inspection it appears that
+songs in that key are for heavily underrepresented in the corpus. There does seem to be quite a bit of variation among keys,
+especially the keys in B, which appear to affect lyrics in a negative way. This points to the fact that there in fact is such a thing, like "the saddest key" (which would be B major).
+
+Although this could be coincidental and the effect may be cancelled out if the corpus were much larger. Somethings that favor this conclusion
+are the average lyrical valencies, which converge to a lyrical valency of `~0.13`. There is no significant distinction between the average major and minor mode, even though we're always told that minor keys are "sad" and major keys are "happy". These results deny what our music teachers have been telling us for centuries!
+
+### Harmony detection limitations
 
 ```{r generate chord templates, include=FALSE}
 #! generate chord templates
@@ -362,23 +383,37 @@ get_key_match_plot <- function(uri, title) {
 }
 
 plot_grid(
-  get_key_match_plot("0gTRROuntlrPQ64W3J2Etv", "Key matching for\nElectioneering")
+  get_key_match_plot("0gTRROuntlrPQ64W3J2Etv", "Keygram for\nElectioneering (Radiohead)")
 ,
-  get_key_match_plot("5dZ8PeKKZJLIQAWNTdp8WX", "Key matching for\nRevolution 9")
+  get_key_match_plot("0ubyD2iLcA6W90tMaKyXs2", "Keygram for\nUNTITLED (JPEGMAFIA)")
 )
 ```
 
 ***
 
-The troubles with key matching.
+I should address some issues with automatic key matching that explain why we should take the idea that B major is the
+saddest key with an even larger grain of salt. Key matching might work for a lot of tracks, but there are many cases where it fails too.
+Where key matching fails most spectacularly, is for highly percussive tracks, which is usually the case for hip hop. This is due to
+the inharmonic nature of most percussive instruments.
+Take for instance *UNTITLED* by *JPEGMAFIA*. Upon listening, the energetic hi hats and fast drum kicks stand out.
+This is manifested in the corresponding keygram, where for each section every key on the y-axis is matched.
+The brighter the tile, the more strongly the key matched. We'd expect a straight line, that changes height after a modulation. But in the *UNTITLED* track there is no such pattern to be found.
+
+Another issue is brought forward by a limitation by the `Spotify` API, that is, only two unique modes can be distinguished by
+the API (the major and minor mode). This is problematic, because many artists apply many different modes to achieve a variety
+of effects that cannot be achieved by just minor or major keys. The song *Electioneering* by *Radiohead* is in D-dorian,
+which is the minor key with a raised sixth. The result is that the key lies somewhere in between D-minor and D-major, which is reflected in the keygram.
+
+Though we could match the keys ourselves for every track in the corpus, another issue would present. To match every possible mode,
+the search space would become too big and our results too cluttered to identify a specific key, as multiple keys would always
+match somewhat.
 
 ### Instrumentation
 
 ```{r}
 # TODO: have pretty keynames everywhere
-# TODO: timbre self-similarity
 
-# TODO: timbre options are: self-similarity, timbre components
+# TODO: show timbre component plot, along with plot that takes in entire corpus
 
 ```
 
@@ -475,7 +510,7 @@ word_freqs %>%
 
 *Hypothesis: higher tempo songs tend to be more aggressive and slower songs more sensual.*
 
-Let's put this one to the test. For this hypothesis we'll denote songs that have a lower BPM than the median (< `r median_tempo`BPM) as slow songs, and the rest songs as fast songs (≥ `r median_tempo`BPM).
+Let's put this one to the test. For this hypothesis we'll denote songs that have a lower BPM than the median (< `r median_tempo`BPM) as slow songs, and the remainder as fast songs (≥ `r median_tempo`BPM).
 
 So far we've explored only the lyrical valency property, but not the lyrics themselves. We might gain some
 new insights if we look at the lyrics directly, so let's try it. One of the most useful tools for visualizing
@@ -489,7 +524,133 @@ As for the fast tracks we also find what one would expect, e.g. aggressive words
 
 Most of the data in this plot seems to **confirm** the hypothesis (though there are exceptions, like *love* among the fast tracks).
 
+### AI: hyperparameter tuning
+
+```{r tune xgboost}
+#! build dataset
+
+# NOTE: can take a long time to run, set to TRUE if it needs to be computed
+if (RUN_XGBOOST_TUNING) {
+  # make process deterministic
+  set.seed(421)
+
+  data <- corpus[c("danceability", "energy", "key", "loudness", "mode",
+                   "tempo", "valence", "lyrical_sentiment"
+  )]
+  # columns to numeric, centering and scaling is not necessary for tree based models
+  data$mode <- as.numeric(factor(data$mode))
+  data$key <- as.numeric(factor(data$key))
+  
+  # split into train and test set
+  data_split <- initial_split(data, strata=lyrical_sentiment)
+  data_train <- training(data_split)
+  data_test <- testing(data_split)
+  # cross validation
+  train_data_cv <- vfold_cv(data_train, strata=lyrical_sentiment, v=2)
+  
+  # build model
+  xgb_specs <- boost_tree(
+    mode="regression", engine="xgboost",
+    trees=tune(), tree_depth=tune(),
+    min_n=tune(), loss_reduction=tune(),
+    sample_size=tune(), mtry=tune(),
+    learn_rate=tune()
+  )
+  
+  xgb_model <- workflow() %>%
+    add_formula(lyrical_sentiment ~ .) %>%
+    add_model(xgb_specs)
+  
+  # configure grid search to find optimal parameters
+  xgb_grid <- grid_latin_hypercube(
+    trees(), tree_depth(), min_n(), loss_reduction(),
+    sample_size=sample_prop(),
+    finalize(mtry(), data_train),
+    learn_rate(),
+    size=30
+  )
+  
+  # find optimal parameters
+  doParallel::registerDoParallel()
+  
+  xgb_params <- tune_grid(
+    xgb_model,
+    resamples=train_data_cv,
+    grid=xgb_grid,
+    control=control_grid(save_pred=TRUE) # TODO: necessary?
+  )
+  
+  best_params <- select_best(xgb_params, metric="rmse")
+  best_params_rmse <- show_best(xgb_params, metric="rmse")[1,]$mean
+}
+```
+
+```{r plot xgboost params}
+ggplotly(xgb_params %>%
+  collect_metrics() %>%
+  filter(.metric == "rmse") %>%
+  select(mtry:sample_size, mean) %>%
+  pivot_longer(mtry:sample_size, values_to="value", names_to="parameter") %>%
+  ggplot(aes(value, mean, color=parameter)) +
+  geom_point(show.legend=FALSE) +
+  facet_wrap(~parameter, scales="free_x") +
+  labs(title="XGboost parameter space", x="Parameter value", y="Mean RMSE (root mean square error)") +
+  custom_theme
+)
+
+# TODO: display best params?
+```
+
+***
+
+*Research: are there some hidden relationships that have yet to be found?*
+
+So far we have plotted numerous relationships between different variables and debunked or confirmed a number of hypotheses.
+Though the reason I picked those visualizations is because there seemed to be potential for an interesting correlation, there
+is still a chance there exist some totally unexpected patterns. Because these may escape a mere human like me, maybe the right
+machine learning tool can pick them up. So that's what we'll be trying.
+
+The technique we'll use is one of *the* most successful machine learning algorithms of the modern day, called extreme gradient boosting (XGBoosting). In essence, it's an ensemble of many small decision trees that boost each other to achieve superior results. To uncover secret relationships we will train the network, using regression, to predict the lyrical valency of a song based on a whole array of inputs that the `Spotify` API delivers (like mode, tempo, musical valence, etc.). Before we dive in and use it, some preparations need to be taken care of. First, the corpus is split into a train set (to train the model) and test set (to evaluate the model). Next up, for XGBoosting to work we need to list a number of hyperparameters. The next step then is to tune these hyperparameters, by training the model for many different combinations of hyperparameters and evaluating each using cross validation. In the plot you can see how well each parameter value works: the lower RMSE, the better. Now that we know the optimal combination we can finally properly train and evaluate the model.
+
+### AI: results
+
+```{r plot xgboost importancies}
+final_xgb_model <- finalize_workflow(xgb_model, best_params)
+
+# train model
+ggplotly(final_xgb_model %>%
+  fit(data=data_train) %>%
+  extract_fit_parsnip() %>%
+  vip(geom = "point") +
+  labs(title="Feature importances", x="Importance", y="Feature")
+)
+```
+
+```{r evaluate xgboost model}
+xgb_rmse <- (collect_metrics(last_fit(final_xgb_model, data_split)) %>% filter(.metric == "rmse"))$.estimate
+
+# compute RMSE for a random model
+guesses <- runif(nrow(data_test))
+random_rmse <- sqrt(mean((data_test$lyrical_sentiment - guesses)^2))
+```
+
+
+***
+
+After training the model, we end up with a RMSE (root mean square error) of ``r xgb_rmse``. This means that the model, on average, is that
+far off from the correct answer. As a reminder: the lyrical valency ranges from `-1` to `1`. It could well be that this still sounds
+quite abstract. As a comparison I also evaluated a model that always makes a random guess. That model performs with a RMSE
+of ``r random_rmse``, which is significantly worse. Therefore, the XGBoosting model must have found some pattern. That
+makes it worth to look at whatever it found. One valuable piece of information that we can extract from the XGBoosting model, is the
+set of feature importances it learned. They tell us how important each input parameter is deemed for predicting the lyrical valency, which you can see in the plot.
+
+Many of the findings we found ourselves already. We already discovered that the mode of the key does not matter.
+We found that musical valence and tempo correlate with lyrical valency. More interesting is what we did not find.
+Apparently, according to the model, is energy the most predictive factor of the lyrical valency, even more so than musical valency.
+This makes sense intuitively. High energy songs might be more likely to have more energetic lyrics. The model also judges
+loudness and danceability as somewhat important features. A reason could be that the genre of a track defines in which range those features, including energy, belong, and that the genre also defines what the lyrics are generally about.
 
 ### Conclusion
 
+To be concluded.
 
