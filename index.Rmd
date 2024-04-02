@@ -151,61 +151,100 @@ corpus <- merge(corpus, lyrics_db, by="track") %>%
 How does music relate to the lyrics? It is tempting to think that a song tries to convey some feeling or emotion, and that both the music and lyrics are there to support this message. Let me give you an example. We might expect a song with a slow beat and laid back guitar to talk about laid back topics, maybe a trip to the beach. At the other end of the spectrum, heavy metal would likely concern itself with darker, heavier subjects. However, are these suspicions even true? Let’s put some numbers to the hypothesis that there in fact is a relationship between music and lyrics. In the next sections I’ll take you through a journey where we approach this topic with a statistical mindset, harnessing all the powers that modern technology has to offer along the way.
 
 We'll start out with picking a large body of music and for each track in there, we are going to collect and store the lyrics. It would be way too cumbersome to scrape all the lyrics from the internet myself, but fortunately the [`Musixmatch`](https://www.musixmatch.com/) API
-allows querying lyrics from code in a single API call. For an unpaid account only 30% of the lyrics for a queried track is returned, but that will do for our intents and purposes. I assign every set of lyrics a sentimental, or valency, score automatically using the 
-[`NLTK`](https://www.nltk.org/) package, which offers natural language processing functionalities. A low score indicates a *sad* feeling, whereas a high score a *happy* feeling. When the lyrics have a numerical score we can start to answer our question: how does music relate to lyrics?
+allows querying lyrics from code in a single API call. For an unpaid account only 30% of the lyrics for a queried track is returned, but that will do for our intents and purposes. I assign every set of lyrics a sentimental, also known as valency, score automatically computed by the [`NLTK`](https://www.nltk.org/) package, which offers natural language processing functionalities. A low score indicates a *sad* feeling, whereas a high score a *happy* feeling. To be precise, the score ranges from `-1.0` to `1.0`. After the lyrics have been assigned a numerical score we can start to answer our question: how does music relate to lyrics?
 
 The research question is still a bit broad. We settled on how to analyze lyrics, but not yet on which aspects on music we'll focus.
-We are going to keep the research broad, and explore how the lyrics relate to the four main elements of music, that is *melody*, *harmony*, *instrumentation* and *rhythm*. To access and preprocess the music properties the [`Spotify`](https://developer.spotify.com/documentation/web-api) API is used. For each element we will either confirm or refute
-any hypotheses that intuitively make a lot of sense, but are not (yet) backed up by data.
+We are going to keep the research broad, and explore how the lyrics relate to the four main elements of music, that is *melody*, *harmony*, *instrumentation* and *rhythm*. To access and preprocess the music properties the [`Spotify`](https://developer.spotify.com/documentation/web-api) API is used. For each element we will either confirm or refute any hypotheses that intuitively make a lot of sense, but are not (yet) backed up by data.
 
 Let us dive into it!
+
+<br><br>
+Valencies for two hypothetical sets of lyrics:
+
+`What a sad, miserable day. It's raining and I have debts to pay!` → <span style="color: red">`-0.79`</span>
+
+`It's the most jolly moment in a while, to treat my granny to a smile!` → <span style="color: green">`0.84`</span>
 
 ### Corpus
 
 The first order of business is choosing the corpus of music. We have chosen a broad research question and the corpus should
-reflect this. It must draw inspiration from various genres and contain a large number of songs, only then can we
-justify general conclusions. Because the heavy lifting in terms of fetching the data we need is done by the `Musixmatch` and `Spotify` APIs,
-this is most certainly possible.
+reflect that. Meaning it should draw inspiration from a large variety and number of songs, only then can we
+justify general conclusions. The reason I won't simply pick the top-50 songs for each decade, or any top list for that matter, is because such a list would be heavily pop dominated. What is interesting is emphasizing *variety* as opposed to *the most popular*, therefore we shall explore many different genres. To be clear, this distinction does not exclude popular songs. All songs in the corpus are sourced from albums that are popular within their genre, only not all were *the* most popular of their time amongst *all* genres. The reason I will proceed with an album oriented approach instead of including all songs from a number of artists or top list of each genre, is in the case of the former that some artists have produced hundreds, some only a dozen of songs which would imbalance the data set, and in the case of the latter the problem I discussed before (stressing *variety* instead of *the most popular*).
+
+To summarize, we want a large corpus from a variety of genres. Because the heavy lifting in terms of fetching the data is done by the `Musixmatch` and `Spotify` APIs, this is most certainly possible.
 
 The exhaustive list of albums that are included in this research:
 
-<span style="color:blue">
-Elephant, Madvillainy, ..Like Clockwork, Street Worms, Midnights,
-HEROES & VILLAINS, St. Elsewhere, The White Album, Plastic Beach,
-Demon Days, Thriller, In the Aeroplane Over the Sea, Hawaii: Part ||,
-WHEN WE ALL FALL ASLEEP, WHERE DO WE GO?, Dua Lipa, The Money Store, OFFLINE!,
-OK Computer and Rumours
-</span>
+* <span style="color: #FF6F61">Pop</span>
+WHEN WE ALL FALL ASLEEP, WHERE DO WE GO? *[Billie Eilish]*, 
+Dua Lipa *[Dua Lipa]*, 
+Midnights *[Taylor Swift]*, 
+Thriller *[Michael Jackson]*
+
+* <span style="color: #6495ED">Classic Rock</span>
+The White Album *[The Beatles]*, 
+Rumours *[Fleetwood Mac]*
+
+* <span style="color: #C7A804">Hip Hop</span>
+Madvillainy *[Madvillain]*, 
+HEROES & VILLAINS *[Metro Boomin]*
+
+* <span style="color: #877A7A">Industrial</span>
+The Money Store *[Death Grips]*, 
+OFFLINE! *[JPEGMAFIA]*
+
+* <span style="color: #28A628">Alternative</span>\*
+Elephant *[The White Stripes]*, 
+Street Worms *[Viagra Boys]*, 
+..Like Clockwork *[Queens of the Stone Age]*, 
+In the Aeroplane Over the Sea *[Neutral Milk Hotel]*, 
+OK Computer *[Radiohead]*, 
+Hawaii: Part II *[Miracle Musical]*
+
+* <span style="color: #808080">Miscellaneous</span>†
+Demon Days *[Gorillaz]*, 
+Plastic Beach *[Gorillaz]*, 
+St. Elsewhere *[Gnarls Barkley]*
+
 
 This totals over **280** tracks and **16** hours of listening time.
+Please note that these genre classifications are not objective, but are subjective and approximate.
+
+<br><br>
+\* You might've noticed a lot of albums have been selected for this genre, but the alternative genre is extremely broad and the albums are highly diverse.
+
+† By Miscellaneous I simply denote albums that cross the barriers of genre as they contain
+numerous elements of a plethora of genres.
 
 ***
 
 **Playlist**
 
-<iframe src="https://open.spotify.com/embed/playlist/1H9BY5uJqk2CWtPo4Ogi2w?utm_source=generator" width="100%" height="380" frameBorder="0" allowfullscreen="" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"></iframe>
+<iframe style="border-radius:12px" src="https://open.spotify.com/embed/playlist/1H9BY5uJqk2CWtPo4Ogi2w?utm_source=generator&theme=0" width="100%" height="352" frameBorder="0" allowfullscreen="" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy"></iframe>
 
 ### Discovery
 
 ```{r discovery}
 # TODO: where did the popularity legend go??
 ggplotly(
-  ggplot(corpus, aes(valence, lyrical_sentiment, col=loudness, size=popularity, text=paste(track, "by", artists))) +
+  ggplot(corpus, aes(valence, lyrical_sentiment, col=loudness, size=popularity, text=paste("track:", track, "by", artists))) +
   geom_point() +
   geom_smooth(inherit.aes=FALSE, aes(valence, lyrical_sentiment)) +
   geom_rug(linewidth=0.2) +
-  labs(title="Musical vs. Lyrical Valence", x="Musical valence", y="Lyrical Valence", col="Loudness (Decibels)", size="Popularity") +
+  labs(title="Musical vs. Lyrical Valence, where size denotes popularity", x="Musical valence", y="Lyrical Valence", col="Loudness (decibels)", size="Popularity") +
   custom_theme
 )
 ```
 
 ***
 
-The `Spotify` API offers a plethora of functionalities that range from very high to very low level. Here we will use some the the high level analyses
-like valence and energy to learn about the corpus.
+*Research: What are the general, high level patterns in the data?*
 
-When we plot energy, musical and lyrical valence values against each other we find something enormously interesting.
-Clearly, even though energy and valence do not seem related, musical and lyrical valence appear highly correlated.
+The `Spotify` API offers a plethora of functionalities that range from very high to very low level. Here we will use some the the high level analyses like *musical valence* and *loudness* to learn about the corpus. In particular, it makes most sense to compare the high level musical valence feature given by `Spotify` to our computed *lyrical valence* value and see if there is any connection. You can try to find songs you know by hovering your mouse over the dots! For example, Ob-La-Di, Ob-La-Da by the Beatles is located in the top right corner, like expected. 
+
+When we do this we find something enormously interesting. Clearly, there is a correlation between musical and lyrical valence, but not in the way one would expect. Tracks with low musical valence **and** tracks with high musical valence correlate with high lyrical valence, whereas musical valences the middle of the pack point to lower lyrical valence. Due to the big size of the corpus this claim carries a lot of weight. Upon closer inspection a limitation of lyrical valence becomes apparent as well, that is the `NLTK` API struggles with lyrics that require a deeper of cultural context and nuance. For example, [*bury a friend*](https://www.musixmatch.com/lyrics/Robert-14/Bury-a-Friend) by Billie Eilish has a lyrical valence of `0.94`, despite the lyrics clearly showcasing a low lyrical valency. This only an exception though, for the large majority of songs the lyrical valence makes a lot of sense, for example a high score (`0.99`) for [*Feel Good Inc.*](https://www.musixmatch.com/lyrics/Gorillaz/Feel-Good-Inc) by Gorillaz and a low score (`-0.94`) for [*Anti-Hero*](https://www.musixmatch.com/lyrics/Taylor-Swift/Anti-Hero) by Taylor Swift. This gives credence to the claim we made.
+
+Let's try to dive even deeper and analyze a much more low level feature of music: melody.
 
 ### Melody
 
@@ -297,7 +336,7 @@ bar_plot <- per_key_valences %>%
   ggplot(aes(key, avg_sentiment, fill=mode, col=count)) +
   geom_col(position=position_dodge(width=0.75)) +
   geom_vline(xintercept=12.5, linetype="dotted", col="black") +
-  labs(title="Mean lyrical valence per key, for either, the major and the minor mode", x="Key", y="Mean lyrical valence") +
+  labs(title="Mean lyrical valence per key, for either, the major and the minor mode", x="Key", y="Mean lyrical valence", col="Count", fill="& Mode") +
   scale_fill_manual(values=c("Either"="gray", "Major"="lightblue", "Minor"="navy")) +
   scale_color_viridis_c(option="rocket", limits=c(0, col_scale_end)) +
   custom_theme
@@ -383,8 +422,7 @@ get_key_match_plot <- function(uri, title) {
 }
 
 plot_grid(
-  get_key_match_plot("0gTRROuntlrPQ64W3J2Etv", "Keygram for\nElectioneering (Radiohead)")
-,
+  get_key_match_plot("0gTRROuntlrPQ64W3J2Etv", "Keygram for\nElectioneering (Radiohead)"),
   get_key_match_plot("0ubyD2iLcA6W90tMaKyXs2", "Keygram for\nUNTITLED (JPEGMAFIA)")
 )
 ```
@@ -408,6 +446,8 @@ Though we could match the keys ourselves for every track in the corpus, another 
 the search space would become too big and our results too cluttered to identify a specific key, as multiple keys would always
 match somewhat.
 
+With that researched, we shall continue to investigating instrumentation.
+
 ### Instrumentation
 
 ```{r}
@@ -415,7 +455,94 @@ match somewhat.
 
 # TODO: show timbre component plot, along with plot that takes in entire corpus
 
+# TODO: unreverse colors in the compmus plots
+
+# TODO: write NA for sections without lyrics
+
 ```
+
+```{r load instrumentation analysis}
+get_timbre_analysis <- function(uri) {
+  get_tidy_audio_analysis(uri) %>%
+  compmus_align(beats, segments) %>%
+  select(beats) %>%
+  unnest(beats) %>%
+  mutate(timbre=map(segments, compmus_summarize, timbre, method="rms", norm="euclidean"))
+}
+
+# Everybody's Got Something To Hide Except Me And My Monkey by The Beatles
+valent_track <- get_timbre_analysis("64P3zpRsDHIk7YTpRtaKYL")
+# I'm So Tired by The Beatles
+unvalent_track <- get_timbre_analysis("2X9H5BokS1u5O46YpNYNsZ")
+
+```
+
+```{r plot instrumentation analysis, warning=FALSE}
+LINE_COLS <- c("red", "green", "blue")
+LINE_SIZE <- 2
+
+get_timbre_plot <- function(analysis, title, caption) {
+  analysis %>%
+  compmus_self_similarity(timbre, "euclidean") %>%
+  ggplot(aes(xstart + xduration*0.5, ystart + yduration*0.5, width=xduration, height=yduration, fill=d)) +
+  geom_tile() +
+  coord_fixed() +
+  scale_fill_viridis_c(option="mako", guide="none") +
+  labs(title=title, x="Time (seconds)", y="", caption=caption) +
+  theme_minimal() +
+  # allow html in caption for coloring
+  theme(plot.caption=ggtext::element_markdown()) +
+  custom_theme
+}
+
+plot_grid(
+  get_timbre_plot(
+    valent_track, "Everybody's Got Something To Hide\nExcept Me And My Monkey\nby The Beatles\n(Lyrical valence = 0.96)",
+    caption=sprintf(
+    "<br>The <span style='color:%s'>%s</span> lines refer to unique sections,<br><span style='color:%s'>%s</span> or <span style='color:%s'>%s</span> lines to repeating sections<br>with the lyrical valence for that section",
+    LINE_COLS[1], LINE_COLS[1], LINE_COLS[2], LINE_COLS[2], LINE_COLS[3], LINE_COLS[3])
+  ) +
+    ggplot2::annotate("segment", x=1, xend=8, y=1, yend=8, lineend="round", size=LINE_SIZE, col=LINE_COLS[1]) +
+    ggplot2::annotate("segment", x=8, xend=37, y=8, yend=37, lineend="round", size=LINE_SIZE, col=LINE_COLS[2]) +
+    ggplot2::annotate("segment", x=37, xend=75, y=37, yend=75, lineend="round", size=LINE_SIZE, col=LINE_COLS[3]) +
+    ggplot2::annotate("segment", x=75, xend=104, y=75, yend=104, lineend="round", size=LINE_SIZE, col=LINE_COLS[2]) +
+    ggplot2::annotate("segment", x=104, xend=125, y=104, yend=125, lineend="round", size=LINE_SIZE, col=LINE_COLS[3]) +
+    ggplot2::annotate("segment", x=128, xend=131, y=128, yend=131, lineend="round", size=LINE_SIZE, col=LINE_COLS[1]) +
+    ggplot2::annotate("segment", x=133, xend=142, y=133, yend=142, lineend="round", size=LINE_SIZE, col=LINE_COLS[2]) +
+    
+    ggplot2::annotate("label", x=10, y=-3, label="NA", fill="white") +
+    ggplot2::annotate("label", x=33, y=20, label=0.97, fill="white") +
+    ggplot2::annotate("label", x=63, y=50, label=0.96, fill="white") +
+    ggplot2::annotate("label", x=93, y=80, label=0.93, fill="white") +
+    ggplot2::annotate("label", x=123, y=110, label=0.82, fill="white") +
+    ggplot2::annotate("label", x=134.5, y=122.5, label=0, fill="white") +
+    ggplot2::annotate("label", x=148, y=135, label=0, fill="white"),
+  get_timbre_plot(unvalent_track, "I'm so Tired by The Beatles\n\n\n(Lyrical valence = -0.85)", caption="<br><br>") +
+    ggplot2::annotate("segment", x=2, xend=43, y=2, yend=43, lineend="round", size=LINE_SIZE, col=LINE_COLS[2]) +
+    ggplot2::annotate("segment", x=45, xend=65, y=45, yend=65, lineend="round", size=LINE_SIZE, col=LINE_COLS[3]) +
+    ggplot2::annotate("segment", x=67, xend=87, y=67, yend=87, lineend="round", size=LINE_SIZE, col=LINE_COLS[2]) +
+    ggplot2::annotate("segment", x=89, xend=106, y=89, yend=106, lineend="round", size=LINE_SIZE, col=LINE_COLS[3]) +
+    ggplot2::annotate("segment", x=106, xend=122, y=106, yend=122, lineend="round", size=LINE_SIZE, col=LINE_COLS[1]) +
+    
+    ggplot2::annotate("label", x=38, y=25, label=-0.86, fill="white") +
+    ggplot2::annotate("label", x=63, y=50, label=-0.71, fill="white") +
+    ggplot2::annotate("label", x=86, y=73, label=-0.94, fill="white") +
+    ggplot2::annotate("label", x=110, y=97, label=-0.74, fill="white") +
+    ggplot2::annotate("label", x=120, y=107, label=0.75, fill="white")
+)
+```
+
+***
+
+*Hypothesis: different timbres correlate with different lyrical valences*
+
+I should rephrase the question of finding the relationship between *instrumentation* and lyrical valence slightly to the relationship between *timbre* and lyrical valence. Which instruments are playing in a song might be relatively easy for a human to figure out, for a computer this is an almost insurmountable task. The closest thing we actually can measure is timbre, also known as the 'color' of the sound. This definition might seem vague, but it is: timbre means anything but pitch, duration or loudness (though sometimes loudness is included).
+
+In order for us to measure how timbre relates to lyrical valence we will compare two tracks on opposite sides of the valence spectrum. In particular, I chose [*Everybody's Got Something To Hide Except Me And My Monkey*](https://www.musixmatch.com/lyrics/The-Beatles/Everybody-s-Got-Something-to-Hide-Except-Me-and-My-Monkey/translation/spanish) and [*I'm So Tired*](https://www.musixmatch.com/lyrics/The-Beatles/I-m-So-Tired-Esher-Demo) written by John Lennon, because they allow us to see how the same artist writes lyrics in relationship to timbre. For both these songs, the timbre-based self-similarity matrix enables us to compare timbre between sections and see how lyrical valence, which you can read next to the lines, changes when timbre changes.
+
+However, after investigating the matrices there do not seem to be any significant discrepancies between sections, except for the outros. But those seems to be a hoaxes, as upon inspection of the lyrics of the first track the outro is just a repetition of the valence-less words 'come-on'. As for the second track, it's simply a repetition of two lines that have been used in previous sections. Because these two lines, which are lyrically somewhat high in valence, were isolated and repeated in the last segment, the lyrical sentiment became positive. In light of this evidence it appears that there is no connection between timbre and lyrical valence. Maybe interesting patterns could be detected if more tracks were compared, as it stands none have been observed.
+
+The next thing to try is rhythm.
 
 ### Rhythm
 
@@ -621,8 +748,13 @@ final_xgb_model <- finalize_workflow(xgb_model, best_params)
 ggplotly(final_xgb_model %>%
   fit(data=data_train) %>%
   extract_fit_parsnip() %>%
-  vip(geom = "point") +
-  labs(title="Feature importances", x="Importance", y="Feature")
+  vi(method="permute", train=data_train, target="lyrical_sentiment", metric="rmse",
+     pred_wrapper=function(obj, newdata)predict(obj, new_data=newdata)$.pred,
+     nsim=100
+  ) %>%
+  vip(geom = "boxplot") +
+  # why are x and y flipped in the plot?!
+  labs(title="Feature importances", x="Feature", y="Importance%")
 )
 ```
 
@@ -652,5 +784,7 @@ loudness and danceability as somewhat important features. A reason could be that
 
 ### Conclusion
 
-To be concluded.
+After exploring the four elementary facets of music, i.e. melody, harmony, instrumentation and rhythm, we gained numerous insights about the question: how does music relate to the lyrics? We've seen some musical aspects that correlate with properties of lyrics and some that don't.
+
+TODO: who does this benefit and how?
 
