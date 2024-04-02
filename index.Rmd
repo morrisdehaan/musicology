@@ -25,7 +25,7 @@ library(cowplot)
 library(showtext)
 library(tm)
 library(wordcloud2)
-library(patchwork) # TODO: necessary?
+library(patchwork)
 library(caret)
 library(recipes)
 library(tidymodels)
@@ -38,7 +38,7 @@ readRenviron(".Renviron")
 portfolio_font <- "Times New Roman"
 custom_theme <- theme(text=element_text(family=portfolio_font))
 
-RUN_XGBOOST_TUNING = TRUE # TODO: remove
+RUN_XGBOOST_TUNING = TRUE
 ```
 
 ```{r load corpus, include=FALSE}
@@ -65,8 +65,6 @@ corpus$mode <- unlist(map(corpus$mode, function(idx) if (idx == 1) "Major" else 
 
 # concatenate artist names into single string
 corpus$artists <- unlist(map(corpus$artists, function(r) paste(r$name, collapse=", ")))
-
-# TODO: tempo to perceived tempo?
 ```
 
 ```{r fetch lyrics, include=FALSE}
@@ -148,17 +146,16 @@ corpus <- merge(corpus, lyrics_db, by="track") %>%
 
 ### Introduction
 
-How does music relate to the lyrics? It is tempting to think that a song tries to convey some feeling or emotion, and that both the music and lyrics are there to support this message. Let me give you an example. We might expect a song with a slow beat and laid back guitar to talk about laid back topics, maybe a trip to the beach. At the other end of the spectrum, heavy metal would likely concern itself with darker, heavier subjects. However, are these suspicions even true? Let’s put some numbers to the hypothesis that there in fact is a relationship between music and lyrics. In the next sections I’ll take you through a journey where we approach this topic with a statistical mindset, harnessing all the powers that modern technology has to offer along the way.
+How does music relate to lyrics? It is tempting to think that a song tries to convey some feeling or emotion, and that both the music and lyrics are there to support this message. Let me give you an example. We might expect a song with a slow beat and laid back guitar to talk about laid back topics, maybe a trip to the beach. At the other end of the spectrum, heavy metal would likely concern itself with darker, heavier subjects. However, are these suspicions even true? Let’s put some numbers to the hypothesis that there in fact is a relationship between music and lyrics. In the next sections I’ll take you through a journey where we approach this topic with a statistical mindset, harnessing all the powers that modern technology has to offer along the way.
 
-We'll start out with picking a large body of music and for each track in there, we are going to collect and store the lyrics. It would be way too cumbersome to scrape all the lyrics from the internet myself, but fortunately the [`Musixmatch`](https://www.musixmatch.com/) API
-allows querying lyrics from code in a single API call. For an unpaid account only 30% of the lyrics for a queried track is returned, but that will do for our intents and purposes. I assign every set of lyrics a sentimental, also known as valency, score automatically computed by the [`NLTK`](https://www.nltk.org/) package, which offers natural language processing functionalities. A low score indicates a *sad* feeling, whereas a high score a *happy* feeling. To be precise, the score ranges from `-1.0` to `1.0`. After the lyrics have been assigned a numerical score we can start to answer our question: how does music relate to lyrics?
+We'll start out with picking a large body of music and for each track in there we are going to collect the lyrics. It would be way too cumbersome to scrape all the lyrics from the internet manually, but fortunately the [`Musixmatch`](https://www.musixmatch.com/) API
+makes it possible to query lyrics from code in a single API call. For an unpaid account only 30% of the lyrics for a queried track is returned, but that will do for our intents and purposes. The lyrics themselves are not enough however, we need to somehow capture meaning in a numerical value in order to run statistical tests on them. Therefore I assign every set of lyrics a sentimental, also known as valency, score automatically computed by the [`NLTK`](https://www.nltk.org/) package, which offers natural language processing functionalities. A low score indicates a *sad* sentiment/feeling, whereas a high score a *happy* sentiment/feeling. To be precise, the score ranges from `-1.0` to `1.0`. This arms us with the capability to analyze lyrics' mood, which is arguably one of the most important aspects of music. The more topic oriented side of lyrics analysis concerning the actual intellectual 'meaning' of words we'll leave aside in this research. Equipped with a strategy on quantifying numbers, we can start to tackle the problem of how to approach computational music analysis.
 
-The research question is still a bit broad. We settled on how to analyze lyrics, but not yet on which aspects on music we'll focus.
-We are going to keep the research broad, and explore how the lyrics relate to the four main elements of music, that is *melody*, *harmony*, *instrumentation* and *rhythm*. To access and preprocess the music properties the [`Spotify`](https://developer.spotify.com/documentation/web-api) API is used. For each element we will either confirm or refute any hypotheses that intuitively make a lot of sense, but are not (yet) backed up by data.
+Instead of zeroing in on a particular aspect of music or a niche genre or artist, we are going to keep the research broad. We'll focus on music as a whole so we can draw interesting conclusions about music as a whole. Throughout this storyboard we'll divvy up music into four main elements: *melody*, *harmony*, *instrumentation* and *rhythm*. For each of these we'll attempt to confirm or deny hypotheses that are grounded in intuition, but not (yet) in science. Of course we still require a way to quantify music, but luckily [`Spotify`](https://developer.spotify.com/documentation/web-api) is kind enough to provide a goldmine of musical data that we'll use.
 
 Let us dive into it!
 
-<br><br>
+<br><br><br><br>
 Valencies for two hypothetical sets of lyrics:
 
 `What a sad, miserable day. It's raining and I have debts to pay!` → <span style="color: red">`-0.79`</span>
@@ -169,11 +166,9 @@ Valencies for two hypothetical sets of lyrics:
 
 The first order of business is choosing the corpus of music. We have chosen a broad research question and the corpus should
 reflect that. Meaning it should draw inspiration from a large variety and number of songs, only then can we
-justify general conclusions. The reason I won't simply pick the top-50 songs for each decade, or any top list for that matter, is because such a list would be heavily pop dominated. What is interesting is emphasizing *variety* as opposed to *the most popular*, therefore we shall explore many different genres. To be clear, this distinction does not exclude popular songs. All songs in the corpus are sourced from albums that are popular within their genre, only not all were *the* most popular of their time amongst *all* genres. The reason I will proceed with an album oriented approach instead of including all songs from a number of artists or top list of each genre, is in the case of the former that some artists have produced hundreds, some only a dozen of songs which would imbalance the data set, and in the case of the latter the problem I discussed before (stressing *variety* instead of *the most popular*).
+justify general conclusions. The reason I won't simply pick the top-50 songs for each decade, or any top list for that matter, is because such a list would be heavily pop dominated. There is much more to music than just popular music. What is interesting is emphasizing *variety* as opposed to *the most popular*, therefore we shall cover a range of different genres. To be clear, this distinction does not exclude the most popular songs. All songs in the corpus are sourced from albums that are exemplary of the niche they occupy and popular within their genre, only not necessarily *the* most popular of their time. The reason I will proceed with an album oriented approach instead of including all songs from a number of artists or top list of each genre, is in the case of the former that some artists have produced hundreds, some only a dozen of songs which would imbalance the data set, and in the case of the latter the problem I discussed before (stressing *variety* instead of *the most popular*).
 
-To summarize, we want a large corpus from a variety of genres. Because the heavy lifting in terms of fetching the data is done by the `Musixmatch` and `Spotify` APIs, this is most certainly possible.
-
-The exhaustive list of albums that are included in this research:
+To summarize, we want a large corpus from a variety of genres, which, because the heavy lifting in terms of fetching the data is done by the `Musixmatch` and `Spotify` APIs, is most certainly possible. The final list of albums that are included in this research:
 
 * <span style="color: #FF6F61">Pop</span>
 WHEN WE ALL FALL ASLEEP, WHERE DO WE GO? *[Billie Eilish]*, 
@@ -207,31 +202,35 @@ Plastic Beach *[Gorillaz]*,
 St. Elsewhere *[Gnarls Barkley]*
 
 
-This totals over **280** tracks and **16** hours of listening time.
-Please note that these genre classifications are not objective, but are subjective and approximate.
+This totals **284** tracks and **16** hours of listening time.
 
-<br><br>
+<br><br><br><br>
 \* You might've noticed a lot of albums have been selected for this genre, but the alternative genre is extremely broad and the albums are highly diverse.
 
 † By Miscellaneous I simply denote albums that cross the barriers of genre as they contain
 numerous elements of a plethora of genres.
 
+<br>
+*Disclaimer: Please note that these genre classifications are not objective, but subjective and approximate.*
+
 ***
 
 **Playlist**
 
-<iframe style="border-radius:12px" src="https://open.spotify.com/embed/playlist/1H9BY5uJqk2CWtPo4Ogi2w?utm_source=generator&theme=0" width="100%" height="352" frameBorder="0" allowfullscreen="" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy"></iframe>
+<iframe style="border-radius:12px" src="https://open.spotify.com/embed/playlist/1H9BY5uJqk2CWtPo4Ogi2w?utm_source=generator&theme=0" width="100%" height="352" frameBorder="0" allowfullscreen="" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" data-external=1 loading="lazy"></iframe>
 
 ### Discovery
 
 ```{r discovery}
-# TODO: where did the popularity legend go??
 ggplotly(
   ggplot(corpus, aes(valence, lyrical_sentiment, col=loudness, size=popularity, text=paste("track:", track, "by", artists))) +
   geom_point() +
   geom_smooth(inherit.aes=FALSE, aes(valence, lyrical_sentiment)) +
   geom_rug(linewidth=0.2) +
-  labs(title="Musical vs. Lyrical Valence, where size denotes popularity", x="Musical valence", y="Lyrical Valence", col="Loudness (decibels)", size="Popularity") +
+  labs(
+    title="Musical vs. Lyrical Valence, where size denotes popularity", x="Musical valence", y="Lyrical Valence",
+    col="Loudness (decibels)", size="Popularity"
+  ) +
   custom_theme
 )
 ```
@@ -240,9 +239,9 @@ ggplotly(
 
 *Research: What are the general, high level patterns in the data?*
 
-The `Spotify` API offers a plethora of functionalities that range from very high to very low level. Here we will use some the the high level analyses like *musical valence* and *loudness* to learn about the corpus. In particular, it makes most sense to compare the high level musical valence feature given by `Spotify` to our computed *lyrical valence* value and see if there is any connection. You can try to find songs you know by hovering your mouse over the dots! For example, Ob-La-Di, Ob-La-Da by the Beatles is located in the top right corner, like expected. 
+Before we look at the individual musical elements as discussed earlier, we should try to explore the data we're dealing with. The `Spotify` API offers a plethora of functionalities that range from very high to very low level. Here we will use some the the high level analyses like *musical valence* and *loudness* to learn about the corpus. In particular, it makes most sense to compare the high level musical valence feature with our computed *lyrical valence* value and see if there is any connection.
 
-When we do this we find something enormously interesting. Clearly, there is a correlation between musical and lyrical valence, but not in the way one would expect. Tracks with low musical valence **and** tracks with high musical valence correlate with high lyrical valence, whereas musical valences the middle of the pack point to lower lyrical valence. Due to the big size of the corpus this claim carries a lot of weight. Upon closer inspection a limitation of lyrical valence becomes apparent as well, that is the `NLTK` API struggles with lyrics that require a deeper of cultural context and nuance. For example, [*bury a friend*](https://www.musixmatch.com/lyrics/Robert-14/Bury-a-Friend) by Billie Eilish has a lyrical valence of `0.94`, despite the lyrics clearly showcasing a low lyrical valency. This only an exception though, for the large majority of songs the lyrical valence makes a lot of sense, for example a high score (`0.99`) for [*Feel Good Inc.*](https://www.musixmatch.com/lyrics/Gorillaz/Feel-Good-Inc) by Gorillaz and a low score (`-0.94`) for [*Anti-Hero*](https://www.musixmatch.com/lyrics/Taylor-Swift/Anti-Hero) by Taylor Swift. This gives credence to the claim we made.
+When we do this we find something enormously interesting. Clearly, there is a correlation between musical and lyrical valence, but not in the way one would expect. Tracks with low musical valence **and** tracks with high musical valence correlate with high lyrical valence, whereas musical valences the middle of the pack point to lower lyrical valence. Due to the big size of the corpus this claim carries a lot of weight. Upon closer inspection a limitation of lyrical valence becomes apparent as well, namely the `NLTK` API struggles with lyrics that require a deeper understanding of (cultural) context and nuance. For example, [*bury a friend*](https://www.musixmatch.com/lyrics/Robert-14/Bury-a-Friend) by Billie Eilish has a lyrical valence of `0.94`, despite the lyrics clearly showcasing a low lyrical valency. This only an exception though, for the large majority of songs the lyrical valence makes a lot of sense, for example a high score (`0.99`) for [*Feel Good Inc.*](https://www.musixmatch.com/lyrics/Gorillaz/Feel-Good-Inc) by Gorillaz and a low score (`-0.94`) for [*Anti-Hero*](https://www.musixmatch.com/lyrics/Taylor-Swift/Anti-Hero) by Taylor Swift. This gives credence to the claim we made.
 
 Let's try to dive even deeper and analyze a much more low level feature of music: melody.
 
@@ -263,7 +262,6 @@ get_chromogram <- function(analysis, title) {
     ggplot(aes(start + duration*0.5, pitch_class, width=duration, fill=value)) +
     geom_tile() +
     labs(title=title, x="Time (seconds)", y=NULL, fill="Magnitude") +
-    # TODO: part of custom theme?
     scale_fill_viridis_c(option="mako", guide="none") +
     theme_minimal() +
     custom_theme
@@ -277,7 +275,6 @@ sad_analysis <- get_audio_analysis("2Jn0wHQ2lEif2gLRsyfaf2")
 happy_entry <- (corpus %>% filter(track == "Ball and Biscuit"))
 sad_entry <- (corpus %>% filter(track == "The Illest Villains"))
 
-# TODO: fix background
 plot_grid(
   get_chromogram(happy_analysis,
     sprintf("%s chromogram (lyrical valency = %s)", happy_entry$track,
@@ -299,14 +296,11 @@ Intuitively, it seems that melody encodes a lot of the valency information of a 
 memorable part and often indicative of the feel of a song. So it makes sense to look at the melody of two tracks, one with low and one
 with high lyrical valence, and investigate how melody correlates with lyrical valence. A sensible visualization tool to use is a chromogram. This captures for each moment the notes that are played, as analyzed using the fourier transform. Let's try this and see if any melody lines become apparent.
 
-Unfortunately, looking at the chromograms, no discernible melody is recognizable. The only thing that sticks out is the droning 'E' in Ball and Biscuit, but this could hardly be called a melody. It appears we need a different tool.
-
-TODO: explain what melody the human ear hears, and that it's not detected
+Unfortunately, looking at the chromograms, no discernible melody is recognizable. The only thing that sticks out is the droning 'E' in Ball and Biscuit, but this could hardly be called a melody. If you listen to the tracks there are clear, repeating melodies present (at least to the human ear) which on first thought should give rise to repeating patterns in the chromogram. Nothing could be less true. It appears we need a different tool.
 
 ### Melody/Harmony
 
 ```{r per key lyrical valence, message=FALSE}
-# TODO: optimize
 per_key_valences <- rbind(
   # add average per key
   corpus %>%
@@ -330,8 +324,6 @@ per_key_valences <- rbind(
 # get the max number of samples for any key
 col_scale_end <- max((per_key_valences %>% filter(key != "Mean\nof all\nkeys"))$count)
 
-# TODO: add error bar or smth or communicate number of tracks per key/mode
-# TODO: fix legend
 bar_plot <- per_key_valences %>%
   ggplot(aes(key, avg_sentiment, fill=mode, col=count)) +
   geom_col(position=position_dodge(width=0.75)) +
@@ -353,11 +345,11 @@ focus on the key in which the melody is played. Luckily `Spotify` gives us the k
 we don't have to compute this ourselves. When we plot the lyrical valency for each key, where the band around the bars represents
 the number of tracks that have that specific key, we get the bar plot to the side. What meets the eye, is a huge spike
 at the D sharp (or E flat) key. What could this mean? Unfortunately not a lot, because upon closer inspection it appears that
-songs in that key are for heavily underrepresented in the corpus. There does seem to be quite a bit of variation among keys,
+songs in that key are heavily underrepresented in the corpus. There does seem to be quite a bit of variation among keys,
 especially the keys in B, which appear to affect lyrics in a negative way. This points to the fact that there in fact is such a thing, like "the saddest key" (which would be B major).
 
-Although this could be coincidental and the effect may be cancelled out if the corpus were much larger. Somethings that favor this conclusion
-are the average lyrical valencies, which converge to a lyrical valency of `~0.13`. There is no significant distinction between the average major and minor mode, even though we're always told that minor keys are "sad" and major keys are "happy". These results deny what our music teachers have been telling us for centuries!
+Although this could be coincidental and the effect may be canceled out if the corpus were much larger. Somethings that favor this conclusion
+are the average lyrical valencies, which converge to a lyrical valency of `~0.13`. There is no significant distinction between the average major and minor mode, even though we're always told that minor keys are "sad" and major keys are "happy". These results deny what our music teachers have been telling us for centuries (at least, lyrically speaking)!
 
 ### Harmony detection limitations
 
@@ -370,7 +362,6 @@ shift_template <- function(temp, n) {
 }
 
 mode_templates <- list(
-  # TODO: where are these from?
   maj=c(6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88),
   min=c(6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17)
 )
@@ -389,10 +380,6 @@ key_templates <- tibble(name=names(key_templates), template=key_templates)
 ```
 
 ```{r harmony, message=FALSE}
-# TODO: use my god is the sun somewhere
-# TODO: use some nice facet wrap somewhere
-
-# TODO: pick any fun song, no good reason required
 get_key_match_plot <- function(uri, title) {
   key_analysis <- get_tidy_audio_analysis(uri) %>%
     compmus_align(sections, segments) %>%
@@ -435,7 +422,7 @@ Where key matching fails most spectacularly, is for highly percussive tracks, wh
 the inharmonic nature of most percussive instruments.
 Take for instance *UNTITLED* by *JPEGMAFIA*. Upon listening, the energetic hi hats and fast drum kicks stand out.
 This is manifested in the corresponding keygram, where for each section every key on the y-axis is matched.
-The brighter the tile, the more strongly the key matched. We'd expect a straight line, that changes height after a modulation. But in the *UNTITLED* track there is no such pattern to be found.
+The brighter the tile, the more strongly the key matched. We'd expect a straight line that changes height after a modulation. But in the *UNTITLED* track there is no such pattern to be found.
 
 Another issue is brought forward by a limitation by the `Spotify` API, that is, only two unique modes can be distinguished by
 the API (the major and minor mode). This is problematic, because many artists apply many different modes to achieve a variety
@@ -446,20 +433,9 @@ Though we could match the keys ourselves for every track in the corpus, another 
 the search space would become too big and our results too cluttered to identify a specific key, as multiple keys would always
 match somewhat.
 
-With that researched, we shall continue to investigating instrumentation.
+With that researched, we shall continue to investigate instrumentation.
 
 ### Instrumentation
-
-```{r}
-# TODO: have pretty keynames everywhere
-
-# TODO: show timbre component plot, along with plot that takes in entire corpus
-
-# TODO: unreverse colors in the compmus plots
-
-# TODO: write NA for sections without lyrics
-
-```
 
 ```{r load instrumentation analysis}
 get_timbre_analysis <- function(uri) {
@@ -534,11 +510,11 @@ plot_grid(
 
 ***
 
-*Hypothesis: different timbres correlate with different lyrical valences*
+*Hypothesis: different timbres correlate with different lyrical valences.*
 
 I should rephrase the question of finding the relationship between *instrumentation* and lyrical valence slightly to the relationship between *timbre* and lyrical valence. Which instruments are playing in a song might be relatively easy for a human to figure out, for a computer this is an almost insurmountable task. The closest thing we actually can measure is timbre, also known as the 'color' of the sound. This definition might seem vague, but it is: timbre means anything but pitch, duration or loudness (though sometimes loudness is included).
 
-In order for us to measure how timbre relates to lyrical valence we will compare two tracks on opposite sides of the valence spectrum. In particular, I chose [*Everybody's Got Something To Hide Except Me And My Monkey*](https://www.musixmatch.com/lyrics/The-Beatles/Everybody-s-Got-Something-to-Hide-Except-Me-and-My-Monkey/translation/spanish) and [*I'm So Tired*](https://www.musixmatch.com/lyrics/The-Beatles/I-m-So-Tired-Esher-Demo) written by John Lennon, because they allow us to see how the same artist writes lyrics in relationship to timbre. For both these songs, the timbre-based self-similarity matrix enables us to compare timbre between sections and see how lyrical valence, which you can read next to the lines, changes when timbre changes.
+In order for us to measure how timbre relates to lyrical valence we will compare two tracks on opposite sides of the valence spectrum. In particular, I chose [*Everybody's Got Something To Hide Except Me And My Monkey*](https://www.musixmatch.com/lyrics/The-Beatles/Everybody-s-Got-Something-to-Hide-Except-Me-and-My-Monkey/translation/spanish) and [*I'm So Tired*](https://www.musixmatch.com/lyrics/The-Beatles/I-m-So-Tired-Esher-Demo) written by John Lennon, because they allow us to see how the same artist writes lyrics in relation to timbre. For both these songs, the timbre-based self-similarity matrix enables us to compare timbre between sections and see how lyrical valence, which you can read next to the lines, changes when timbre changes.
 
 However, after investigating the matrices there do not seem to be any significant discrepancies between sections, except for the outros. But those seems to be a hoaxes, as upon inspection of the lyrics of the first track the outro is just a repetition of the valence-less words 'come-on'. As for the second track, it's simply a repetition of two lines that have been used in previous sections. Because these two lines, which are lyrically somewhat high in valence, were isolated and repeated in the last segment, the lyrical sentiment became positive. In light of this evidence it appears that there is no connection between timbre and lyrical valence. Maybe interesting patterns could be detected if more tracks were compared, as it stands none have been observed.
 
@@ -549,10 +525,6 @@ The next thing to try is rhythm.
 ```{r word cloud, warning=FALSE}
 
 # NOTE: for an annoying reason one 1 word cloud can be displayed
-
-# TODO: random gradient in color
-
-# TODO: faceted word cloud, 1 plot for low tempo, 1 for high tempo, also include some lyrical valency analysis
 
 GROUP_COUNT <- 80
 MIN_FREQ <- 0.0015
@@ -602,8 +574,6 @@ clean_text <- function(txt) {
 slow_word_freqs <- clean_text(paste(slow_lyrics, collapse=" "))
 fast_word_freqs <- clean_text(paste(fast_lyrics, collapse=" "))
 
-# TODO: have top 50 of either category in there
-# TODO: mention relative frequency somewhere
 normalize <- function(x) (x - min(x)) / (max(x) - min(x))
 
 # compute differences in frequencies
@@ -641,11 +611,11 @@ Let's put this one to the test. For this hypothesis we'll denote songs that have
 
 So far we've explored only the lyrical valency property, but not the lyrics themselves. We might gain some
 new insights if we look at the lyrics directly, so let's try it. One of the most useful tools for visualizing
-patterns in textual data is a so called `word cloud`, which you can see to the side. 
+patterns in textual data is a so-called `word cloud`, which you can see to the side. 
 The words in <span style="color:skyblue">blue</span> refer to words that occur very frequently in
 fast songs relative to slow songs, and vice versa for the <span style="color:red">red</span> words.
 
-Immediately we can see instances that prove the hypothesis. Slow song words include sensual words such as *number* (as in, someones phone number), *kiss*, *boy* and *hot*. These are words we would expect to encounter in a love song. Though what stands out is that 
+Immediately we can see instances that prove the hypothesis. Slow song words include sensual words such as *number* (as in, someone's phone number), *kiss*, *boy* and *hot*. These are words we would expect to encounter in a love song. Though what stands out is that 
 *love* is included in the fast songs. There are also some odd ones out like *bones*.
 As for the fast tracks we also find what one would expect, e.g. aggressive words like *kill*, *gun* and *ill*. Also, very noticeably, we find numerous verbs and filler words. This makes sense in a track where the singer (or rapper) has to keep up the pace in a high BPM track, and it's easiest for the listener and artist to reuse many of the common verbs and filler words to keep the information stream somewhat limited.
 
@@ -704,7 +674,7 @@ if (RUN_XGBOOST_TUNING) {
     xgb_model,
     resamples=train_data_cv,
     grid=xgb_grid,
-    control=control_grid(save_pred=TRUE) # TODO: necessary?
+    control=control_grid(save_pred=TRUE)
   )
   
   best_params <- select_best(xgb_params, metric="rmse")
@@ -721,11 +691,9 @@ ggplotly(xgb_params %>%
   ggplot(aes(value, mean, color=parameter)) +
   geom_point(show.legend=FALSE) +
   facet_wrap(~parameter, scales="free_x") +
-  labs(title="XGboost parameter space", x="Parameter value", y="Mean RMSE (root mean square error)") +
+  labs(title="XGBoost errors for possible combinations of parameter values", x="Parameter value", y="Mean RMSE (root mean square error)") +
   custom_theme
 )
-
-# TODO: display best params?
 ```
 
 ***
@@ -737,7 +705,7 @@ Though the reason I picked those visualizations is because there seemed to be po
 is still a chance there exist some totally unexpected patterns. Because these may escape a mere human like me, maybe the right
 machine learning tool can pick them up. So that's what we'll be trying.
 
-The technique we'll use is one of *the* most successful machine learning algorithms of the modern day, called extreme gradient boosting (XGBoosting). In essence, it's an ensemble of many small decision trees that boost each other to achieve superior results. To uncover secret relationships we will train the network, using regression, to predict the lyrical valency of a song based on a whole array of inputs that the `Spotify` API delivers (like mode, tempo, musical valence, etc.). Before we dive in and use it, some preparations need to be taken care of. First, the corpus is split into a train set (to train the model) and test set (to evaluate the model). Next up, for XGBoosting to work we need to list a number of hyperparameters. The next step then is to tune these hyperparameters, by training the model for many different combinations of hyperparameters and evaluating each using cross validation. In the plot you can see how well each parameter value works: the lower RMSE, the better. Now that we know the optimal combination we can finally properly train and evaluate the model.
+The technique we'll use is one of *the* most successful machine learning algorithms of the modern day, called extreme gradient boosting (XGBoosting). In essence, it's an ensemble of many small decision trees that boost each other to achieve superior results. To uncover secret relationships we will train the network, using regression, to predict the lyrical valency of a song based on a whole array of inputs that the `Spotify` API delivers (like mode, tempo, musical valence, etc.). Before we dive in and use it, some preparations need to be taken care of. First, the corpus is split into a train set (to train the model) and test set (to evaluate the model). Next up, for XGBoosting to work we need to list a number of hyperparameters. The idea is to tune these hyperparameters, by training the model for many different combinations of hyperparameters and evaluating each using cross validation. In the plot you can see how well each parameter value works: the lower RMSE, the better. We automatically pick the optimal combination of hyperparameters so we can properly train and evaluate the final model.
 
 ### AI: results
 
@@ -754,7 +722,7 @@ ggplotly(final_xgb_model %>%
   ) %>%
   vip(geom = "boxplot") +
   # why are x and y flipped in the plot?!
-  labs(title="Feature importances", x="Feature", y="Importance%")
+  labs(title="Feature importances for XGBoosting", x="Feature", y="Importance%")
 )
 ```
 
@@ -773,18 +741,18 @@ After training the model, we end up with a RMSE (root mean square error) of ``r 
 far off from the correct answer. As a reminder: the lyrical valency ranges from `-1` to `1`. It could well be that this still sounds
 quite abstract. As a comparison I also evaluated a model that always makes a random guess. That model performs with a RMSE
 of ``r random_rmse``, which is significantly worse. Therefore, the XGBoosting model must have found some pattern. That
-makes it worth to look at whatever it found. One valuable piece of information that we can extract from the XGBoosting model, is the
+makes it worth looking at whatever it found. One valuable piece of information that we can extract from the XGBoosting model, is the
 set of feature importances it learned. They tell us how important each input parameter is deemed for predicting the lyrical valency, which you can see in the plot.
 
 Many of the findings we found ourselves already. We already discovered that the mode of the key does not matter.
 We found that musical valence and tempo correlate with lyrical valency. More interesting is what we did not find.
-Apparently, according to the model, is energy the most predictive factor of the lyrical valency, even more so than musical valency.
+Apparently, according to the model, energy is the most predictive factor of the lyrical valency, even more so than musical valency.
 This makes sense intuitively. High energy songs might be more likely to have more energetic lyrics. The model also judges
 loudness and danceability as somewhat important features. A reason could be that the genre of a track defines in which range those features, including energy, belong, and that the genre also defines what the lyrics are generally about.
 
 ### Conclusion
 
-After exploring the four elementary facets of music, i.e. melody, harmony, instrumentation and rhythm, we gained numerous insights about the question: how does music relate to the lyrics? We've seen some musical aspects that correlate with properties of lyrics and some that don't.
+After exploring the four elementary facets of music, i.e. melody, harmony, instrumentation and rhythm, we gained numerous insights on the question: how does music relate to the lyrics? We've seen some musical aspects that correlate with properties of lyrics and some that don't. On a high level we've learned that musical valence is a good predictor of lyrical valence. But can we figure out what low level features are at the root of this? Though melody lines are hard to quantify, we've looked at all 24 minor and major keys and found that surprisingly the mode actually does not make a difference. Among keys there seems to be some variance in lyrical valence, but this could be eliminated with an even bigger dataset. Furthermore, we've found no reason to suspect that instrumentation, measured by timbre, has an effect on lyrical valence or vice versa. Tempo, as a matter of fact, has a clear influence on lyrics. This could be explained by the fact that many subgenres stick to approximately the same tempo and deal with the same lyrical subjects, for example some parts of rap. Lastly, AI helped us to find patterns that we did not find ourselves, like that energy is highly predictive of lyrical valence. In summary, there are definitely relationships between lyrics and music, though not in all areas.
 
-TODO: who does this benefit and how?
+That being said, the last word hasn't been spoken on this subject. For future research it would be extremely interesting to delve deeper into more niche questions, like how Latin music lyrically relates to music from the USA. Dissecting the interconnectedness of lyrics and music may uncover countless and much deeper understandings of cultures across the globe. Furthermore, research like this attempts to discover how our feelings (music) connect with our intellect and analytical skills required for verbal processing (lyrics). Continued research will likely yield valuable knowledge about the human brain and what makes humans human.
 
